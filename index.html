@@ -558,6 +558,8 @@ const APP_VERSION = 'v0.8.2';
   #undoRollBtn:hover{transform:translateY(-1px); box-shadow:0 8px 24px rgba(232,99,106,0.25);}
   #undoRollBtn:active{transform:translateY(0px);}
   #undoRollBtn.hidden{display:none;}
+  #voteStatus.hidden{display:none;}
+  #unwantedItemsPanel.hidden{display:none;}
 
   /* Shared by #undoRollBtn/#shareBtn: a big, low-opacity icon centered behind the
      label, filling the button as a watermark rather than sitting inline with the text. */
@@ -1725,6 +1727,12 @@ const APP_VERSION = 'v0.8.2';
   </div>
   <div id="error"></div>
   <div id="discordStatus"></div>
+
+  <div id="unwantedItemsPanel" class="hidden">
+    <div class="modal-title">Unwanted Items</div>
+    <ul id="unwantedItemsList"></ul>
+    <button type="button" class="ghost-btn" id="reimportUnwantedBtn">Reimport for a new org-wide vote</button>
+  </div>
 
   <div id="resultsTitle"></div>
   <div id="results"></div>
@@ -3781,6 +3789,95 @@ async function finalizeVoteNow(voteId){
 // On load, resume showing a pending vote's status if one exists from a previous session.
 renderVoteStatus();
 if(loadPendingVote()) checkVoteResults();
+
+// ---- Consume vote results into the existing roll pipeline ----
+let unwantedItems = []; // items with zero voters from the most recent finalized vote
+
+async function consumeVoteResults(record){
+  clearPendingVote();
+  voteStatusPanel.classList.add('hidden');
+
+  const directAssign = []; // [{ item, voter }]
+  const rollGroups = [];   // [{ item, voters }]
+  const unwanted = [];
+
+  record.items.forEach((item, index) => {
+    const voters = (record.results && record.results[String(index)]) || [];
+    if(voters.length === 0) unwanted.push(item);
+    else if(voters.length === 1) directAssign.push({ item, voter: voters[0] });
+    else rollGroups.push({ item, voters });
+  });
+
+  // Union of everyone involved in this roll, for the read-only Names panel and
+  // for building per-name result buckets.
+  const allNames = Array.from(new Set([
+    ...directAssign.map(d => d.voter),
+    ...rollGroups.flatMap(g => g.voters),
+  ]));
+  setNamesFromVotes(allNames);
+
+  const buckets = allNames.map(() => []);
+  const nameIndex = new Map(allNames.map((n, i) => [n, i]));
+
+  directAssign.forEach(({ item, voter }) => {
+    for(let i = 0; i < item.qty; i++) buckets[nameIndex.get(voter)].push(item.name);
+  });
+
+  rollGroups.forEach(({ item, voters }) => {
+    const itemCopies = [];
+    for(let i = 0; i < item.qty; i++) itemCopies.push(item.name);
+    const { buckets: groupBuckets } = assign(voters, itemCopies, evenSpread.checked, oneEach.checked);
+    voters.forEach((voter, i) => {
+      buckets[nameIndex.get(voter)].push(...groupBuckets[i]);
+    });
+  });
+
+  unwantedItems = unwanted;
+  renderUnwantedItems();
+
+  const title = record.title || '';
+  const when = new Date().toLocaleString();
+  const itemsSnapshot = record.items.map(it => ({
+    name: it.name, displayName: it.name, detail: it.info ? `(${it.info})` : '', quality: null, scu: null,
+  }));
+
+  render(allNames, buckets, [], title, itemsSnapshot);
+  logRoll(allNames, buckets, [], title, when, itemsSnapshot, false);
+
+  lastRollResult = { title, when, names: allNames.slice(), buckets: buckets.map(b => b.slice()), itemsSnapshot };
+  shareBtn.disabled = false;
+  shareBtn.classList.add('ready');
+
+  const webhookUrl = loadWebhookUrl();
+  if(webhookUrl && discordEnabled.checked){
+    postRollToDiscord(webhookUrl, { title, when, names: allNames, buckets, leftover: [], itemsSnapshot, spreadEven: evenSpread.checked, capOne: oneEach.checked });
+  }
+  const historyWebhookUrl = loadHistoryWebhookUrl();
+  if(historyWebhookUrl && historyWebhookEnabled.checked){
+    postRollToHistoryLog(historyWebhookUrl, { title, when, names: allNames, buckets, leftover: [], itemsSnapshot, spreadEven: evenSpread.checked, capOne: oneEach.checked });
+  }
+}
+
+function renderUnwantedItems(){
+  const panel = document.getElementById('unwantedItemsPanel');
+  const list = document.getElementById('unwantedItemsList');
+  if(!unwantedItems.length){ panel.classList.add('hidden'); list.innerHTML = ''; return; }
+  panel.classList.remove('hidden');
+  list.innerHTML = '';
+  unwantedItems.forEach(it => {
+    const li = document.createElement('li');
+    li.textContent = `${it.name}${it.qty > 1 ? ' ×' + it.qty : ''}`;
+    list.appendChild(li);
+  });
+}
+
+document.getElementById('reimportUnwantedBtn').addEventListener('click', () => {
+  unwantedItems.forEach(it => {
+    for(let i = 0; i < it.qty; i++) addOrIncrementItem(it.name, null);
+  });
+  unwantedItems = [];
+  renderUnwantedItems();
+});
 
 // Trims a field value to fit Discord's 1024-char embed field limit
 function trimForEmbed(text){
