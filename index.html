@@ -3289,9 +3289,13 @@ testHistoryWebhookBtn.addEventListener('click', async () => {
 const WORKER_URL_KEY = 'rollcall_vote_worker_url_v1';
 const WORKER_SESSION_KEY = 'rollcall_vote_session_v1';
 
+// Must match the login gate's own copy of this default (index.html's earlier
+// script block, which can't reference this one — see the gate's comment).
+const DEFAULT_WORKER_URL = 'https://lootops-vote-worker.lootopsd4.workers.dev';
+
 function loadWorkerUrl(){
-  try{ return (localStorage.getItem(WORKER_URL_KEY) || '').replace(/\/+$/, ''); }
-  catch(e){ return ''; }
+  try{ return (localStorage.getItem(WORKER_URL_KEY) || DEFAULT_WORKER_URL).replace(/\/+$/, ''); }
+  catch(e){ return DEFAULT_WORKER_URL; }
 }
 function saveWorkerUrl(url){
   try{ localStorage.setItem(WORKER_URL_KEY, url.replace(/\/+$/, '')); }catch(e){ /* ignore */ }
