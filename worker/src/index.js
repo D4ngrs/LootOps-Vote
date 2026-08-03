@@ -159,8 +159,9 @@ async function handleAuthCallback(request, env){
   }
   const member = await memberRes.json();
   const roles = member.roles || [];
-  if(!roles.includes(env.OFFICER_ROLE_ID)){
-    return Response.redirect(returnTo + '#error=' + encodeURIComponent('Your Discord account does not have the Officer role.'), 302);
+  const officerRoleIds = (env.OFFICER_ROLE_IDS || '').split(',').map(s => s.trim()).filter(Boolean);
+  if(!roles.some(r => officerRoleIds.includes(r))){
+    return Response.redirect(returnTo + '#error=' + encodeURIComponent('Your Discord account does not have an authorized role.'), 302);
   }
 
   const username = member.user && (member.user.global_name || member.user.username) || 'Officer';
