@@ -72,6 +72,103 @@ async function verifyToken(secret, token){
   }
 }
 
+const DISCORD_OAUTH_AUTHORIZE_URL = 'https://discord.com/oauth2/authorize';
+const DISCORD_OAUTH_TOKEN_URL = 'https://discord.com/api/oauth2/token';
+const STATE_MAX_AGE_MS = 10 * 60 * 1000; // 10 minutes to complete the Discord login
+const SESSION_MAX_AGE_S = 8 * 60 * 60; // 8 hours
+
+function isAllowedReturnOrigin(returnTo, env){
+  try{
+    const origin = new URL(returnTo).origin;
+    const allowed = (env.ALLOWED_RETURN_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean);
+    return allowed.includes(origin);
+  }catch(e){
+    return false;
+  }
+}
+
+function callbackUrl(request, env){
+  return new URL('/auth/callback', request.url).toString();
+}
+
+async function handleAuthLogin(request, env){
+  const url = new URL(request.url);
+  const returnTo = url.searchParams.get('returnTo') || '';
+  if(!isAllowedReturnOrigin(returnTo, env)){
+    return jsonResponse({ error: 'returnTo origin not allowed' }, 400);
+  }
+
+  const state = await signToken(env.SESSION_SIGNING_SECRET, { returnTo, ts: Date.now() });
+
+  const authorizeUrl = new URL(DISCORD_OAUTH_AUTHORIZE_URL);
+  authorizeUrl.searchParams.set('client_id', env.DISCORD_CLIENT_ID);
+  authorizeUrl.searchParams.set('redirect_uri', callbackUrl(request, env));
+  authorizeUrl.searchParams.set('response_type', 'code');
+  authorizeUrl.searchParams.set('scope', 'identify guilds.members.read');
+  authorizeUrl.searchParams.set('state', state);
+  authorizeUrl.searchParams.set('prompt', 'consent');
+
+  return Response.redirect(authorizeUrl.toString(), 302);
+}
+
+async function handleAuthCallback(request, env){
+  const url = new URL(request.url);
+  const code = url.searchParams.get('code');
+  const stateToken = url.searchParams.get('state');
+
+  const statePayload = stateToken ? await verifyToken(env.SESSION_SIGNING_SECRET, stateToken) : null;
+  if(!statePayload || !isAllowedReturnOrigin(statePayload.returnTo, env) || (Date.now() - statePayload.ts) > STATE_MAX_AGE_MS){
+    return jsonResponse({ error: 'Invalid or expired login attempt. Please try logging in again.' }, 400);
+  }
+  const returnTo = statePayload.returnTo;
+
+  if(!code){
+    return Response.redirect(returnTo + '#error=' + encodeURIComponent('Discord login was cancelled or failed.'), 302);
+  }
+
+  // Exchange the authorization code for a short-lived Discord access token.
+  const tokenRes = await fetch(DISCORD_OAUTH_TOKEN_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: env.DISCORD_CLIENT_ID,
+      client_secret: env.DISCORD_CLIENT_SECRET,
+      grant_type: 'authorization_code',
+      code,
+      redirect_uri: callbackUrl(request, env),
+    }),
+  });
+  if(!tokenRes.ok){
+    return Response.redirect(returnTo + '#error=' + encodeURIComponent('Discord login failed during token exchange.'), 302);
+  }
+  const tokenData = await tokenRes.json();
+
+  // Live role check: ask Discord, right now, whether this specific user
+  // currently holds the Officer role in our guild. This is the check that
+  // makes the whole flow safe to revoke instantly from Discord's side.
+  const guildId = await getGuildId(env);
+  const memberRes = await fetch(`https://discord.com/api/users/@me/guilds/${guildId}/member`, {
+    headers: { 'Authorization': `Bearer ${tokenData.access_token}` },
+  });
+  if(!memberRes.ok){
+    return Response.redirect(returnTo + '#error=' + encodeURIComponent('Could not verify your server membership.'), 302);
+  }
+  const member = await memberRes.json();
+  const roles = member.roles || [];
+  if(!roles.includes(env.OFFICER_ROLE_ID)){
+    return Response.redirect(returnTo + '#error=' + encodeURIComponent('Your Discord account does not have the Officer role.'), 302);
+  }
+
+  const username = member.user && (member.user.global_name || member.user.username) || 'Officer';
+  const sessionToken = await signToken(env.SESSION_SIGNING_SECRET, {
+    sub: member.user && member.user.id,
+    username,
+    exp: Math.floor(Date.now() / 1000) + SESSION_MAX_AGE_S,
+  });
+
+  return Response.redirect(returnTo + '#session=' + encodeURIComponent(sessionToken), 302);
+}
+
 const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 const KEYCAP_DIGITS = '0123456789';
 
