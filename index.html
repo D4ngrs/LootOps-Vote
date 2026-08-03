@@ -1491,6 +1491,17 @@ const APP_VERSION = 'v0.8.2';
       <label for="rollTitle">Title</label>
       <input type="text" class="entry-input" id="rollTitle" placeholder='e.g. "TSG Alpha loot"' autocomplete="off">
     </div>
+    <div class="title-row">
+      <label for="roleSearch">Ping role (optional)</label>
+      <div style="position:relative;">
+        <input type="text" class="entry-input" id="roleSearch" placeholder="Type a role name…" autocomplete="off">
+        <div class="wiki-suggestions" id="roleSuggestions"></div>
+      </div>
+    </div>
+    <div class="title-row">
+      <label for="flavorTextInput">Flavor text (optional)</label>
+      <input type="text" class="entry-input" id="flavorTextInput" placeholder='e.g. "React within 3 days to claim your share!"' autocomplete="off">
+    </div>
   </header>
 
   <div class="modal-overlay hidden" id="settingsOverlay">
@@ -3560,6 +3571,90 @@ clearWorkerConfigBtn.addEventListener('click', async () => {
   workerSecretInput.value = '';
   setWorkerConfigStatus('Removed.');
 });
+
+// ---- Role-ping autocomplete ----
+let rolesCache = null; // [{id, name}], fetched once per session
+let selectedRoleId = null;
+const roleSearchInput = document.getElementById('roleSearch');
+const roleSuggestions = document.getElementById('roleSuggestions');
+let currentRoleMatches = [];
+let currentRoleSuggestionBtns = [];
+let activeRoleSuggestionIndex = -1;
+
+async function ensureRolesLoaded(){
+  if(rolesCache) return rolesCache;
+  try{
+    const res = await workerFetch('/roles');
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    rolesCache = data.roles || [];
+  }catch(e){
+    rolesCache = [];
+  }
+  return rolesCache;
+}
+
+function selectRole(role){
+  selectedRoleId = role.id;
+  roleSearchInput.value = role.name;
+  roleSuggestions.innerHTML = '';
+  currentRoleMatches = [];
+  currentRoleSuggestionBtns = [];
+}
+
+function setActiveRoleSuggestion(index){
+  currentRoleSuggestionBtns.forEach(b => b.classList.remove('active'));
+  activeRoleSuggestionIndex = index;
+  if(index >= 0 && currentRoleSuggestionBtns[index]){
+    currentRoleSuggestionBtns[index].classList.add('active');
+  }
+}
+
+// Guards against overlapping calls: typing several characters quickly fires
+// several overlapping async calls (each awaits ensureRolesLoaded()), and only
+// the most recently-started one should be allowed to render its results —
+// otherwise earlier calls resolve later and append duplicate suggestion sets.
+let roleSuggestionRequestId = 0;
+
+async function renderRoleSuggestions(){
+  const requestId = ++roleSuggestionRequestId;
+  const query = roleSearchInput.value.trim().toLowerCase();
+  roleSuggestions.innerHTML = '';
+  currentRoleMatches = [];
+  currentRoleSuggestionBtns = [];
+  activeRoleSuggestionIndex = -1;
+  selectedRoleId = null; // typing invalidates any prior selection
+  if(!query) return;
+
+  const roles = await ensureRolesLoaded();
+  if(requestId !== roleSuggestionRequestId) return; // a newer call has since started, discard this one
+
+  const matches = roles.filter(r => r.name.toLowerCase().includes(query)).slice(0, 8);
+  currentRoleMatches = matches;
+
+  matches.forEach(role => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'wiki-suggestion';
+    btn.textContent = role.name;
+    btn.addEventListener('click', () => selectRole(role));
+    roleSuggestions.appendChild(btn);
+    currentRoleSuggestionBtns.push(btn);
+  });
+}
+
+roleSearchInput.addEventListener('input', renderRoleSuggestions);
+roleSearchInput.addEventListener('focus', () => { if(roleSearchInput.value.trim()) renderRoleSuggestions(); });
+document.addEventListener('click', e => {
+  if(!roleSearchInput.contains(e.target) && !roleSuggestions.contains(e.target)) roleSuggestions.innerHTML = '';
+});
+roleSearchInput.addEventListener('keydown', e => {
+  if(e.key === 'ArrowDown'){ e.preventDefault(); setActiveRoleSuggestion(Math.min(activeRoleSuggestionIndex + 1, currentRoleMatches.length - 1)); }
+  else if(e.key === 'ArrowUp'){ e.preventDefault(); setActiveRoleSuggestion(Math.max(activeRoleSuggestionIndex - 1, 0)); }
+  else if(e.key === 'Enter' && activeRoleSuggestionIndex >= 0){ e.preventDefault(); selectRole(currentRoleMatches[activeRoleSuggestionIndex]); }
+});
+
+const flavorTextInput = document.getElementById('flavorTextInput');
 
 // Trims a field value to fit Discord's 1024-char embed field limit
 function trimForEmbed(text){
