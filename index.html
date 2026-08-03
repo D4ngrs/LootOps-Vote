@@ -3792,7 +3792,13 @@ async function consumeVoteResults(record){
   render(allNames, buckets, [], title, itemsSnapshot);
   logRoll(allNames, buckets, [], title, when, itemsSnapshot);
 
-  lastRollResult = { title, when, names: allNames.slice(), buckets: buckets.map(b => b.slice()), itemsSnapshot };
+  lastRollResult = {
+    title, when,
+    names: allNames.slice(),
+    buckets: buckets.map(b => b.slice()),
+    itemsSnapshot,
+    leftover: unwanted.map(it => ({ name: it.name, qty: it.qty })),
+  };
   shareBtn.disabled = false;
   shareBtn.classList.add('ready');
 
