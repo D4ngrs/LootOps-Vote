@@ -1479,6 +1479,20 @@ const APP_VERSION = 'v0.8.2';
       <input type="text" class="entry-input" id="rollTitle" placeholder='e.g. "TSG Alpha loot"' autocomplete="off">
     </div>
     <div class="title-row">
+      <label for="voteDurationSelect">Voting duration</label>
+      <select class="entry-input" id="voteDurationSelect">
+        <option value="1">1 hour</option>
+        <option value="3">3 hours</option>
+        <option value="6">6 hours</option>
+        <option value="12">12 hours</option>
+        <option value="24">1 day</option>
+        <option value="48">2 days</option>
+        <option value="72" selected>3 days</option>
+        <option value="120">5 days</option>
+        <option value="168">7 days</option>
+      </select>
+    </div>
+    <div class="title-row">
       <label for="roleSearch">Ping role (optional)</label>
       <div style="position:relative;">
         <input type="text" class="entry-input" id="roleSearch" placeholder="Type a role name…" autocomplete="off">
@@ -3481,6 +3495,7 @@ function buildVoteItemsPayload(){
 }
 
 const postVoteBtn = document.getElementById('postVoteBtn');
+const voteDurationSelect = document.getElementById('voteDurationSelect');
 
 postVoteBtn.addEventListener('click', async () => {
   const title = rollTitleInput.value.trim();
@@ -3498,6 +3513,7 @@ postVoteBtn.addEventListener('click', async () => {
         when: new Date().toLocaleString(),
         flavorText: flavorTextInput.value.trim() || undefined,
         roleId: selectedRoleId || undefined,
+        deadlineHours: Number(voteDurationSelect.value) || undefined,
         items: buildVoteItemsPayload(),
       }),
     });
@@ -3518,8 +3534,24 @@ postVoteBtn.addEventListener('click', async () => {
 
 // ---- Pending-vote status, manual finalize override, result fetching ----
 const voteStatusPanel = document.getElementById('voteStatus');
+let voteCountdownTimer = null;
+
+function formatCountdown(msLeft){
+  if(msLeft <= 0) return 'closing now';
+  const totalSeconds = Math.floor(msLeft / 1000);
+  const d = Math.floor(totalSeconds / 86400);
+  const h = Math.floor((totalSeconds % 86400) / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = totalSeconds % 60;
+  if(d > 0) return `${d}d ${h}h`;
+  if(h > 0) return `${h}h ${m}m`;
+  if(m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
+}
 
 function renderVoteStatus(){
+  if(voteCountdownTimer){ clearInterval(voteCountdownTimer); voteCountdownTimer = null; }
+
   const pending = loadPendingVote();
   if(!pending){ voteStatusPanel.classList.add('hidden'); voteStatusPanel.innerHTML = ''; return; }
 
@@ -3529,6 +3561,17 @@ function renderVoteStatus(){
   const label = document.createElement('span');
   label.textContent = `Vote posted: "${pending.title}" — `;
   voteStatusPanel.appendChild(label);
+
+  const countdownEl = document.createElement('span');
+  countdownEl.className = 'vote-status-msg';
+  voteStatusPanel.appendChild(countdownEl);
+  const updateCountdown = () => {
+    const msLeft = pending.deadline - Date.now();
+    countdownEl.textContent = 'Closes in ' + formatCountdown(msLeft) + '  ';
+    if(msLeft <= 0 && voteCountdownTimer){ clearInterval(voteCountdownTimer); voteCountdownTimer = null; }
+  };
+  updateCountdown();
+  voteCountdownTimer = setInterval(updateCountdown, 1000);
 
   const checkBtn = document.createElement('button');
   checkBtn.type = 'button';
@@ -3575,7 +3618,7 @@ async function checkVoteResults(){
   if(!pending) return;
   setVoteStatusMsg('Checking…');
   try{
-    const res = await workerFetch('/vote/' + pending.voteId);
+    const res = await workerFetch('/vote/' + pending.voteId + '/preview');
     if(!res.ok){
       const body = await res.json().catch(() => ({}));
       setVoteStatusMsg('Could not check status: ' + (body.detail || body.error || ('HTTP ' + res.status)), 'err');
@@ -3584,9 +3627,16 @@ async function checkVoteResults(){
     const record = await res.json();
     if(record.status === 'ready'){
       await consumeVoteResults(record);
-    }else{
-      setVoteStatusMsg('Still open — no results yet.');
+      return;
     }
+    if(record.status === 'aborted'){
+      setVoteStatusMsg('This vote was aborted.', 'err');
+      return;
+    }
+    // Still open — show who's reacted so far without finalizing/rolling anything.
+    const votersSoFar = Array.from(new Set(Object.values(record.results || {}).flat()));
+    setNamesFromVotes(votersSoFar);
+    setVoteStatusMsg(votersSoFar.length + (votersSoFar.length === 1 ? ' person has' : ' people have') + ' reacted so far.');
   }catch(e){
     setVoteStatusMsg('Could not reach the Worker to check status.', 'err');
   }
@@ -3637,6 +3687,7 @@ let unwantedItems = []; // items with zero voters from the most recent finalized
 
 async function consumeVoteResults(record){
   clearPendingVote();
+  if(voteCountdownTimer){ clearInterval(voteCountdownTimer); voteCountdownTimer = null; }
   voteStatusPanel.classList.add('hidden');
 
   const directAssign = []; // [{ item, voter }]

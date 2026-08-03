@@ -337,7 +337,7 @@ async function postVote(request, env){
   try{ body = await request.json(); }
   catch(e){ return jsonResponse({ error: 'Invalid JSON body' }, 400); }
 
-  const { items, title, deadlineDays, roleId, when, flavorText } = body;
+  const { items, title, deadlineHours, roleId, when, flavorText } = body;
   if(!Array.isArray(items) || items.length === 0){
     return jsonResponse({ error: 'items must be a non-empty array' }, 400);
   }
@@ -365,7 +365,7 @@ async function postVote(request, env){
   }
 
   const voteId = crypto.randomUUID();
-  const days = Number.isFinite(deadlineDays) && deadlineDays > 0 ? deadlineDays : 3;
+  const hours = Number.isFinite(deadlineHours) && deadlineHours > 0 ? deadlineHours : 72; // default 3 days
   const record = {
     id: voteId,
     items,
@@ -374,7 +374,7 @@ async function postVote(request, env){
     messageIds,
     emojiMap,
     createdAt: Date.now(),
-    deadline: Date.now() + days * 24 * 60 * 60 * 1000,
+    deadline: Date.now() + hours * 60 * 60 * 1000,
     status: 'pending',
     results: null,
   };
@@ -558,6 +558,28 @@ async function getVote(voteId, env){
   return jsonResponse(JSON.parse(raw));
 }
 
+// Non-destructive: reads current reaction state from Discord for a still-open
+// vote so the app can preview who's reacted so far, without finalizing (no
+// KV write, status stays "pending"). Once the vote is no longer pending, just
+// returns the stored record as-is — there's nothing live left to read.
+async function previewVoteEndpoint(voteId, env){
+  const raw = await env.VOTES_KV.get(`vote:${voteId}`);
+  if(!raw) return jsonResponse({ error: 'Vote not found' }, 404);
+
+  const record = JSON.parse(raw);
+  if(record.status !== 'pending') return jsonResponse(record);
+
+  try{
+    const results = {};
+    for(const entry of record.emojiMap){
+      results[entry.itemIndex] = await fetchReactionUsers(env, entry.messageId, entry.emoji);
+    }
+    return jsonResponse({ ...record, results });
+  }catch(e){
+    return jsonResponse({ error: 'Preview failed', detail: String(e) }, 502);
+  }
+}
+
 async function finalizeVoteEndpoint(voteId, env){
   const result = await finalizeVote(env, voteId);
   if(!result.ok){
@@ -620,9 +642,12 @@ export default {
       }
     }
 
-    const voteMatch = url.pathname.match(/^\/vote\/([^/]+)(\/finalize|\/announce|\/abort)?$/);
+    const voteMatch = url.pathname.match(/^\/vote\/([^/]+)(\/finalize|\/announce|\/abort|\/preview)?$/);
     if(voteMatch && request.method === 'GET' && !voteMatch[2]){
       return getVote(voteMatch[1], env);
+    }
+    if(voteMatch && request.method === 'GET' && voteMatch[2] === '/preview'){
+      return previewVoteEndpoint(voteMatch[1], env);
     }
     if(voteMatch && request.method === 'POST' && voteMatch[2] === '/finalize'){
       return finalizeVoteEndpoint(voteMatch[1], env);
