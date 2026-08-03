@@ -567,10 +567,39 @@ const APP_VERSION = 'v0.8.2';
   #postVoteBtn:hover{transform:translateY(-1px); box-shadow:0 8px 24px rgba(232,163,61,0.25);}
   #postVoteBtn:active{transform:translateY(0px);}
   #postVoteBtn:disabled{opacity:.6; cursor:default; transform:none; box-shadow:none;}
+  #voteStatus{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:12px 16px;
+    margin-bottom:14px;
+  }
   #voteStatus.hidden{display:none;}
-  .vote-status-msg{margin-left:8px; font-size:12px; color:var(--muted);}
+  .vote-status-row{
+    display:flex; flex-wrap:wrap; align-items:baseline; justify-content:space-between; gap:6px 12px;
+  }
+  .vote-status-title{color:var(--text); font-weight:600; font-size:13px;}
+  .vote-status-countdown{color:var(--muted); font-size:12px;}
+  .vote-status-actions{display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;}
+  .vote-status-msg{font-size:12px; color:var(--muted); margin-top:8px; min-height:1.2em;}
+  .vote-status-msg:empty{margin-top:0; min-height:0;}
   .vote-status-msg.err{color:var(--bad);}
+
+  #unwantedItemsPanel{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:14px 16px;
+    margin-bottom:14px;
+  }
   #unwantedItemsPanel.hidden{display:none;}
+  #unwantedItemsPanel .modal-title{font-size:14px; margin-bottom:10px;}
+  #unwantedItemsList{
+    list-style:none; margin:0 0 12px; padding:0;
+    display:flex; flex-direction:column; gap:4px;
+    font-size:12.5px; color:var(--text);
+  }
+  #unwantedItemsList li{padding:6px 10px; background:var(--panel-2); border-radius:6px;}
 
   /* Shared by #postVoteBtn/#shareBtn: a big, low-opacity icon centered behind the
      label, filling the button as a watermark rather than sitting inline with the text. */
@@ -2179,8 +2208,10 @@ function applyResponsivePlaceholders(){
 applyResponsivePlaceholders();
 mobileLayoutQuery.addEventListener('change', applyResponsivePlaceholders);
 
-resetBtn.addEventListener('click', async () => {
-  if(!await confirmModal('Reset names, items, and the roll title? This clears the current setup (your saved Discord settings and roll history are kept).', 'Reset')) return;
+// Shared by the Reset button and "Reimport for a new org-wide vote" — both
+// need a fully blank slate (new vote round means new participants, so the
+// old Names list can't carry over either).
+function resetRollState(){
   namesArr = [];
   itemsArr = [];
   rollTitleInput.value = '';
@@ -2193,6 +2224,11 @@ resetBtn.addEventListener('click', async () => {
   shareBtn.classList.remove('ready');
   renderNamesList();
   renderItemsList();
+}
+
+resetBtn.addEventListener('click', async () => {
+  if(!await confirmModal('Reset names, items, and the roll title? This clears the current setup (your saved Discord settings and roll history are kept).', 'Reset')) return;
+  resetRollState();
 });
 
 // ---- Component detail formatting: "JS-500" -> "JS-500 (POWR / MIL / A / S3)" ----
@@ -2597,7 +2633,7 @@ function snapshotItemsForRoll(){
 function formatWonItemHtml(name, qty, itemByName){
   const def = (itemByName && itemByName.get(name)) || {};
   const lineBits = [];
-  if(qty > 1) lineBits.push('<span class="won-qty">' + qty + 'x</span>');
+  lineBits.push('<span class="won-qty">' + qty + '×</span>');
   lineBits.push(escapeHtml(def.displayName || name));
   if(def.quality) lineBits.push('<span class="won-qual">Q' + def.quality + '</span>');
   if(def.scu) lineBits.push('<span class="won-scu">' + def.scu + ' SCU</span>');
@@ -2657,7 +2693,7 @@ function buildShareCardHtml(result){
   function itemHtml(itemName, qty){
     const def = itemByName.get(itemName) || {};
     const bits = [];
-    if(qty > 1) bits.push('<span class="qty">' + qty + 'x</span>');
+    bits.push('<span class="qty">' + qty + '×</span>');
     bits.push(escapeHtml(def.displayName || itemName));
     if(def.quality) bits.push('<span class="qual">Q' + def.quality + '</span>');
     if(def.scu) bits.push('<span class="scu">' + def.scu + ' SCU</span>');
@@ -3558,27 +3594,36 @@ function renderVoteStatus(){
   voteStatusPanel.classList.remove('hidden');
   voteStatusPanel.innerHTML = '';
 
+  const row1 = document.createElement('div');
+  row1.className = 'vote-status-row';
+  voteStatusPanel.appendChild(row1);
+
   const label = document.createElement('span');
-  label.textContent = `Vote posted: "${pending.title}" — `;
-  voteStatusPanel.appendChild(label);
+  label.className = 'vote-status-title';
+  label.textContent = `Vote posted: "${pending.title}"`;
+  row1.appendChild(label);
 
   const countdownEl = document.createElement('span');
-  countdownEl.className = 'vote-status-msg';
-  voteStatusPanel.appendChild(countdownEl);
+  countdownEl.className = 'vote-status-countdown';
+  row1.appendChild(countdownEl);
   const updateCountdown = () => {
     const msLeft = pending.deadline - Date.now();
-    countdownEl.textContent = 'Closes in ' + formatCountdown(msLeft) + '  ';
+    countdownEl.textContent = 'Closes in ' + formatCountdown(msLeft);
     if(msLeft <= 0 && voteCountdownTimer){ clearInterval(voteCountdownTimer); voteCountdownTimer = null; }
   };
   updateCountdown();
   voteCountdownTimer = setInterval(updateCountdown, 1000);
+
+  const actions = document.createElement('div');
+  actions.className = 'vote-status-actions';
+  voteStatusPanel.appendChild(actions);
 
   const checkBtn = document.createElement('button');
   checkBtn.type = 'button';
   checkBtn.className = 'ghost-btn';
   checkBtn.textContent = 'Check Status';
   checkBtn.addEventListener('click', checkVoteResults);
-  voteStatusPanel.appendChild(checkBtn);
+  actions.appendChild(checkBtn);
 
   const finalizeBtn = document.createElement('button');
   finalizeBtn.type = 'button';
@@ -3588,7 +3633,7 @@ function renderVoteStatus(){
     if(!await confirmModal('End voting now and roll with whoever has reacted so far?', 'Start Rolling')) return;
     await finalizeVoteNow(pending.voteId);
   });
-  voteStatusPanel.appendChild(finalizeBtn);
+  actions.appendChild(finalizeBtn);
 
   const abortBtn = document.createElement('button');
   abortBtn.type = 'button';
@@ -3598,9 +3643,9 @@ function renderVoteStatus(){
     if(!await confirmModal('Cancel this vote? The posted Discord message stays up, but it will never be rolled — you\'ll be free to edit items and post a new vote.', 'Abort Vote')) return;
     await abortVoteNow(pending.voteId);
   });
-  voteStatusPanel.appendChild(abortBtn);
+  actions.appendChild(abortBtn);
 
-  const statusMsg = document.createElement('span');
+  const statusMsg = document.createElement('div');
   statusMsg.className = 'vote-status-msg';
   statusMsg.id = 'voteStatusMsg';
   voteStatusPanel.appendChild(statusMsg);
@@ -3778,13 +3823,15 @@ function renderUnwantedItems(){
   list.innerHTML = '';
   unwantedItems.forEach(it => {
     const li = document.createElement('li');
-    li.textContent = `${it.name}${it.qty > 1 ? ' ×' + it.qty : ''}`;
+    li.textContent = `${it.qty}× ${it.name}`;
     list.appendChild(li);
   });
 }
 
 document.getElementById('reimportUnwantedBtn').addEventListener('click', () => {
-  unwantedItems.forEach(it => {
+  const leftover = unwantedItems;
+  resetRollState();
+  leftover.forEach(it => {
     for(let i = 0; i < it.qty; i++) addOrIncrementItem(it.name, null);
   });
   unwantedItems = [];
