@@ -519,7 +519,7 @@ const APP_VERSION = 'v0.8.2';
   .discord-warning{color:var(--bad); font-size:10.5px; opacity:.85;}
 
   .roll-row{display:flex; justify-content:center; align-items:stretch; gap:10px; margin-bottom:14px;}
-  #rollBtn{
+  #postVoteBtn{
     font-family:'Space Grotesk', sans-serif;
     font-weight:700;
     font-size:15px;
@@ -534,36 +534,15 @@ const APP_VERSION = 'v0.8.2';
     box-shadow:0 0 0 rgba(232,163,61,0);
     transition:transform .12s ease, box-shadow .2s ease;
   }
-  #rollBtn:hover{transform:translateY(-1px); box-shadow:0 8px 24px rgba(232,163,61,0.25);}
-  #rollBtn:active{transform:translateY(0px);}
-  #rollBtn:disabled{opacity:.6; cursor:default; transform:none; box-shadow:none;}
-  #undoRollBtn{
-    display:flex;
-    align-items:center;
-    gap:6px;
-    font-family:'Space Grotesk', sans-serif;
-    font-weight:700;
-    font-size:15px;
-    letter-spacing:.05em;
-    text-transform:uppercase;
-    color:#14151A;
-    background:linear-gradient(135deg, var(--bad), #EF9297);
-    border:none;
-    border-radius:8px;
-    padding:12px 16px;
-    cursor:pointer;
-    box-shadow:0 0 0 rgba(232,99,106,0);
-    transition:transform .12s ease, box-shadow .2s ease;
-  }
-  #undoRollBtn:hover{transform:translateY(-1px); box-shadow:0 8px 24px rgba(232,99,106,0.25);}
-  #undoRollBtn:active{transform:translateY(0px);}
-  #undoRollBtn.hidden{display:none;}
+  #postVoteBtn:hover{transform:translateY(-1px); box-shadow:0 8px 24px rgba(232,163,61,0.25);}
+  #postVoteBtn:active{transform:translateY(0px);}
+  #postVoteBtn:disabled{opacity:.6; cursor:default; transform:none; box-shadow:none;}
   #voteStatus.hidden{display:none;}
   #unwantedItemsPanel.hidden{display:none;}
 
-  /* Shared by #undoRollBtn/#shareBtn: a big, low-opacity icon centered behind the
+  /* Shared by #postVoteBtn/#shareBtn: a big, low-opacity icon centered behind the
      label, filling the button as a watermark rather than sitting inline with the text. */
-  #rollBtn, #undoRollBtn, #shareBtn{position:relative; overflow:hidden;}
+  #postVoteBtn, #shareBtn{position:relative; overflow:hidden;}
   .btn-bg-icon{
     position:absolute;
     top:50%; left:50%;
@@ -572,11 +551,8 @@ const APP_VERSION = 'v0.8.2';
     pointer-events:none;
     z-index:0;
   }
-  /* Same rotate-ccw path as Roll's shuffle/Share's link icon family, just spun so
-     the opening and arrowhead sit at the top instead of the path's default lower-left. */
-  #undoRollBtn .btn-bg-icon{width:58px; height:58px; transform:translate(-50%,-50%) rotate(130deg);}
   #shareBtn .btn-bg-icon{width:60px; height:60px;}
-  #rollBtn .btn-bg-icon{width:58px; height:58px;}
+  #postVoteBtn .btn-bg-icon{width:58px; height:58px;}
   .btn-label{position:relative; z-index:1;}
 
   /* Dark/inert until a roll exists, then flips to the exact same gold treatment as
@@ -1483,12 +1459,12 @@ const APP_VERSION = 'v0.8.2';
     <div class="header-top">
       <h1>LootOps</h1>
       <div class="header-actions">
-        <button id="discordSettingsBtn" class="ghost-btn">🔗 Discord webhook</button>
+        <button id="discordSettingsBtn" class="ghost-btn">🔗 Discord settings</button>
         <button id="logoutBtn" class="ghost-btn">🔒 Log out</button>
         <button id="resetBtn" class="ghost-btn danger">↺ Reset</button>
       </div>
     </div>
-    <p>Put in names and items, hit roll. Items get shuffled and dealt out at random.<br>Set up a Discord Webhook to have the results posted to a predefined Discord channel.</p>
+    <p>Add items, post to Discord for voting, then roll once results are in. The bot posts the vote and the results — no manual roster entry.</p>
     <div class="title-row">
       <label for="rollTitle">Title</label>
       <input type="text" class="entry-input" id="rollTitle" placeholder='e.g. "TSG Alpha loot"' autocomplete="off">
@@ -1509,21 +1485,9 @@ const APP_VERSION = 'v0.8.2';
   <div class="modal-overlay hidden" id="settingsOverlay">
     <div class="modal-panel">
       <div class="modal-head">
-        <div class="modal-title">Discord Webhook</div>
+        <div class="modal-title">Discord Settings</div>
         <button type="button" class="modal-close" id="closeSettingsBtn">×</button>
       </div>
-      <label class="modal-label" for="webhookUrlInput">Webhook URL</label>
-      <input type="text" class="entry-input" id="webhookUrlInput" placeholder="https://discord.com/api/webhooks/…" autocomplete="off">
-      <div class="modal-hint">Saved locally on this device. After each roll, a summary (title, participants, loot pool, results, and any leftovers) is posted to this webhook automatically.</div>
-      <div class="modal-actions">
-        <button type="button" class="primary-btn" id="saveWebhookBtn">Save</button>
-        <button type="button" class="ghost-btn" id="testWebhookBtn">Send test</button>
-        <button type="button" class="ghost-btn danger" id="clearWebhookBtn">Clear</button>
-      </div>
-      <div class="modal-status" id="webhookStatus"></div>
-
-      <hr class="modal-divider">
-
       <div class="modal-title">History Log Webhook</div>
       <label class="modal-label" for="historyWebhookUrlInput">Webhook URL</label>
       <input type="text" class="entry-input" id="historyWebhookUrlInput" placeholder="https://discord.com/api/webhooks/…" autocomplete="off">
@@ -1619,25 +1583,6 @@ const APP_VERSION = 'v0.8.2';
     </div>
   </div>
 
-  <div class="modal-overlay hidden" id="undoReasonOverlay">
-    <div class="modal-panel confirm-panel">
-      <div class="confirm-message">Undo the last roll?</div>
-      <div class="confirm-actions reason-actions" id="undoReasonList">
-        <button type="button" class="confirm-btn confirm-ok" id="undoReasonNameBtn">Wrong / missing name</button>
-        <button type="button" class="confirm-btn confirm-ok" id="undoReasonItemBtn">Wrong / missing item</button>
-        <button type="button" class="confirm-btn confirm-ok" id="undoReasonOtherBtn">Other</button>
-        <button type="button" class="confirm-btn confirm-cancel" id="undoReasonCancelBtn">Cancel</button>
-      </div>
-      <div class="reason-other hidden" id="undoReasonOtherView">
-        <input type="text" class="entry-input" id="undoReasonOtherInput" placeholder="Describe the reason…" autocomplete="off">
-        <div class="confirm-actions">
-          <button type="button" class="confirm-btn confirm-cancel" id="undoReasonBackBtn">Back</button>
-          <button type="button" class="confirm-btn confirm-ok" id="undoReasonOtherConfirmBtn">Confirm</button>
-        </div>
-      </div>
-    </div>
-  </div>
-
   <div class="grid">
     <div class="panel names">
       <div class="panel-label">Names <span class="count" id="nameCount">0</span></div>
@@ -1681,11 +1626,6 @@ const APP_VERSION = 'v0.8.2';
     <label><input type="checkbox" id="oneEach"> Cap at 1 item per name</label>
     <div class="sep"></div>
     <div class="discord-row">
-      <label><input type="checkbox" id="discordEnabled"> Post to Discord</label>
-      <span class="discord-warning" id="discordWarning"></span>
-    </div>
-    <div class="sep"></div>
-    <div class="discord-row">
       <label><input type="checkbox" id="historyWebhookEnabled"> Log to history channel</label>
       <span class="discord-warning" id="historyWebhookWarning"></span>
     </div>
@@ -1699,23 +1639,6 @@ const APP_VERSION = 'v0.8.2';
   <div id="voteStatus" class="hidden"></div>
 
   <div class="roll-row">
-    <button id="undoRollBtn" type="button" class="hidden">
-      <svg class="btn-bg-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <polyline points="1 4 1 10 7 10"/>
-        <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
-      </svg>
-      <span class="btn-label">Undo roll</span>
-    </button>
-    <button id="rollBtn">
-      <svg class="btn-bg-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <polyline points="16 3 21 3 21 8"/>
-        <line x1="4" y1="20" x2="21" y2="3"/>
-        <polyline points="21 16 21 21 16 21"/>
-        <line x1="15" y1="15" x2="21" y2="21"/>
-        <line x1="4" y1="4" x2="9" y2="9"/>
-      </svg>
-      <span class="btn-label">Roll</span>
-    </button>
     <button id="shareBtn" type="button" disabled aria-label="Share result">
       <svg class="btn-bg-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M9 15l6-6"/>
@@ -2129,17 +2052,14 @@ const namesListEl = document.getElementById('namesList');
 const itemsListEl = document.getElementById('itemsList');
 const nameCount = document.getElementById('nameCount');
 const itemCount = document.getElementById('itemCount');
-const rollBtn = document.getElementById('rollBtn');
 const results = document.getElementById('results');
 const errorEl = document.getElementById('error');
 const evenSpread = document.getElementById('evenSpread');
 const oneEach = document.getElementById('oneEach');
-const discordEnabled = document.getElementById('discordEnabled');
 const rollTitleInput = document.getElementById('rollTitle');
 const resetBtn = document.getElementById('resetBtn');
 const discordStatusEl = document.getElementById('discordStatus');
 const shareBtn = document.getElementById('shareBtn');
-const undoRollBtn = document.getElementById('undoRollBtn');
 let lastRollResult = null; // { title, names, buckets, itemsSnapshot } from the most recent roll — feeds the Share modal
 
 // Keeps the page from scrolling behind an open modal — scrolling should only
@@ -2189,70 +2109,11 @@ document.addEventListener('keydown', e => {
   if(e.key === 'Escape' && !confirmOverlay.classList.contains('hidden')) settleConfirm(false);
 });
 
-// ---- Undo reason popup ----
-// Purpose-built (rather than a generalized confirmModal) so the undo flow can offer
-// canned reasons plus a free-text "Other" without complicating confirmModal's other
-// callers (Reset, Clear History, remove webhook, discard Design Mode changes).
-const undoReasonOverlay = document.getElementById('undoReasonOverlay');
-const undoReasonList = document.getElementById('undoReasonList');
-const undoReasonOtherView = document.getElementById('undoReasonOtherView');
-const undoReasonOtherInput = document.getElementById('undoReasonOtherInput');
-const undoReasonNameBtn = document.getElementById('undoReasonNameBtn');
-const undoReasonItemBtn = document.getElementById('undoReasonItemBtn');
-const undoReasonOtherBtn = document.getElementById('undoReasonOtherBtn');
-const undoReasonCancelBtn = document.getElementById('undoReasonCancelBtn');
-const undoReasonBackBtn = document.getElementById('undoReasonBackBtn');
-const undoReasonOtherConfirmBtn = document.getElementById('undoReasonOtherConfirmBtn');
-let resolveUndoReason = null;
-
-function showUndoReasonList(){
-  undoReasonOtherInput.value = '';
-  undoReasonOtherView.classList.add('hidden');
-  undoReasonList.classList.remove('hidden');
-}
-
-function undoReasonModal(){
-  showUndoReasonList();
-  undoReasonOverlay.classList.remove('hidden');
-  lockBodyScroll();
-  return new Promise(resolve => { resolveUndoReason = resolve; });
-}
-function settleUndoReason(result){
-  if(!resolveUndoReason) return; // already settled (e.g. Escape then a stray click)
-  undoReasonOverlay.classList.add('hidden');
-  unlockBodyScroll();
-  const resolve = resolveUndoReason;
-  resolveUndoReason = null;
-  resolve(result);
-}
-undoReasonNameBtn.addEventListener('click', () => settleUndoReason('Wrong / missing name'));
-undoReasonItemBtn.addEventListener('click', () => settleUndoReason('Wrong / missing item'));
-undoReasonCancelBtn.addEventListener('click', () => settleUndoReason(null));
-undoReasonOtherBtn.addEventListener('click', () => {
-  undoReasonList.classList.add('hidden');
-  undoReasonOtherView.classList.remove('hidden');
-  undoReasonOtherInput.focus();
-});
-undoReasonBackBtn.addEventListener('click', showUndoReasonList);
-function confirmUndoReasonOther(){
-  const text = undoReasonOtherInput.value.trim();
-  settleUndoReason(text || 'Other');
-}
-undoReasonOtherConfirmBtn.addEventListener('click', confirmUndoReasonOther);
-undoReasonOtherInput.addEventListener('keydown', e => {
-  if(e.key === 'Enter'){ e.preventDefault(); confirmUndoReasonOther(); }
-});
-undoReasonOverlay.addEventListener('click', e => {
-  if(e.target === undoReasonOverlay) settleUndoReason(null);
-});
-document.addEventListener('keydown', e => {
-  if(e.key === 'Escape' && !undoReasonOverlay.classList.contains('hidden')) settleUndoReason(null);
-});
-
 let namesArr = [];       // array of strings
 let itemsArr = [];       // array of { name, qty, meta, label }
-// Roll expands each item into `qty` array entries in one shot (see rollBtn handler) —
-// an unbounded qty here can allocate enough memory to crash the tab.
+// A roll expands each item into `qty` array entries in one shot (see
+// consumeVoteResults) — an unbounded qty here can allocate enough memory to
+// crash the tab.
 const MAX_ITEM_QTY = 500;
 
 function renderNamesList(){
@@ -2289,7 +2150,7 @@ applyResponsivePlaceholders();
 mobileLayoutQuery.addEventListener('change', applyResponsivePlaceholders);
 
 resetBtn.addEventListener('click', async () => {
-  if(!await confirmModal('Reset names, items, and the roll title? This clears the current setup (your saved Discord webhook and roll history are kept).', 'Reset')) return;
+  if(!await confirmModal('Reset names, items, and the roll title? This clears the current setup (your saved Discord settings and roll history are kept).', 'Reset')) return;
   namesArr = [];
   itemsArr = [];
   rollTitleInput.value = '';
@@ -2747,7 +2608,7 @@ function escapeHtml(s){
 
 // ---- Share result modal ----
 // Builds a shareable-image-style card from a result object — either the most recent
-// roll (lastRollResult, set in the rollBtn handler below) or a saved history entry
+// roll (lastRollResult, set in consumeVoteResults) or a saved history entry
 // (via historyEntryToShareResult). Item name, quantity, category, quality, and SCU
 // are all pulled from itemsSnapshot (a snapshot of itemsArr at roll time) rather than
 // re-derived or re-typed here, so the card always matches what the tool actually rolled.
@@ -3035,16 +2896,6 @@ function saveHistory(entries){
   try{ localStorage.setItem(HISTORY_KEY, JSON.stringify(entries)); }catch(e){ /* storage unavailable, ignore */ }
 }
 
-const LAST_UNDONE_KEY = 'rollcall_vote_last_undone_v1';
-
-function loadLastRollUndone(){
-  try{ return localStorage.getItem(LAST_UNDONE_KEY) === 'true'; }
-  catch(e){ return false; }
-}
-function setLastRollUndone(value){
-  try{ localStorage.setItem(LAST_UNDONE_KEY, String(!!value)); }catch(e){ /* storage unavailable, ignore */ }
-}
-
 const HISTORY_PREVIEW_COUNT = 2;
 const historyMoreBtn = document.getElementById('historyMoreBtn');
 
@@ -3099,14 +2950,8 @@ function createHistoryEntryDiv(entry){
   return div;
 }
 
-function updateUndoButtonVisibility(){
-  const entries = loadHistory();
-  undoRollBtn.classList.toggle('hidden', entries.length === 0 || loadLastRollUndone());
-}
-
 function renderHistory(){
   const entries = loadHistory();
-  updateUndoButtonVisibility();
   document.getElementById('histCount').textContent = entries.length;
   const clearBtn = document.getElementById('clearHistoryBtn');
   clearBtn.disabled = entries.length === 0;
@@ -3140,7 +2985,7 @@ function renderHistoryModalList(){
   older.forEach(entry => container.appendChild(createHistoryEntryDiv(entry)));
 }
 
-function logRoll(names, buckets, leftover, title, when, itemsSnapshot, postedToDiscord){
+function logRoll(names, buckets, leftover, title, when, itemsSnapshot){
   const entries = loadHistory();
   entries.push({
     when: when || new Date().toLocaleString(),
@@ -3148,11 +2993,9 @@ function logRoll(names, buckets, leftover, title, when, itemsSnapshot, postedToD
     names,
     buckets,
     leftover,
-    itemsSnapshot: itemsSnapshot || [],
-    postedToDiscord: !!postedToDiscord
+    itemsSnapshot: itemsSnapshot || []
   });
   saveHistory(entries);
-  setLastRollUndone(false);
   renderHistory();
   if(!historyOverlay.classList.contains('hidden')) renderHistoryModalList();
 }
@@ -3160,7 +3003,6 @@ function logRoll(names, buckets, leftover, title, when, itemsSnapshot, postedToD
 document.getElementById('clearHistoryBtn').addEventListener('click', async () => {
   if(await confirmModal('Clear all saved roll history? This can\'t be undone.', 'Clear history')){
     saveHistory([]);
-    setLastRollUndone(false);
     renderHistory();
   }
 });
@@ -3310,65 +3152,17 @@ document.addEventListener('keydown', e => {
   if(e.key === 'Escape' && !changelogOverlay.classList.contains('hidden')) closeChangelogModal();
 });
 
-// ---- Discord webhook ----
-const WEBHOOK_KEY = 'rollcall_vote_webhook_v1';
-const WEBHOOK_ENABLED_KEY = 'rollcall_vote_webhook_enabled_v1';
 const EMBED_COLOR = 0xE8A33D; // matches --gold, used for the main setup embed
 const EMBED_COLOR_RESULTS = 0x7C6FF0; // matches --violet, used for the results embed
-const EMBED_COLOR_UNDO = 0xE8636A; // matches --bad, used for the undo-notice embed
-
-function loadWebhookEnabled(){
-  try{
-    const raw = localStorage.getItem(WEBHOOK_ENABLED_KEY);
-    return raw === null ? false : raw === 'true'; // default off
-  }catch(e){ return false; }
-}
-function saveWebhookEnabled(enabled){
-  try{ localStorage.setItem(WEBHOOK_ENABLED_KEY, String(enabled)); }catch(e){ /* ignore */ }
-}
-discordEnabled.checked = loadWebhookEnabled();
-discordEnabled.addEventListener('change', () => saveWebhookEnabled(discordEnabled.checked));
-
-const discordWarningEl = document.getElementById('discordWarning');
-function refreshDiscordWarning(){
-  discordWarningEl.textContent = loadWebhookUrl() ? '' : '(no webhook set)';
-}
-refreshDiscordWarning();
 
 const settingsOverlay = document.getElementById('settingsOverlay');
 const discordSettingsBtn = document.getElementById('discordSettingsBtn');
 const closeSettingsBtn = document.getElementById('closeSettingsBtn');
-const webhookUrlInput = document.getElementById('webhookUrlInput');
-const saveWebhookBtn = document.getElementById('saveWebhookBtn');
-const testWebhookBtn = document.getElementById('testWebhookBtn');
-const clearWebhookBtn = document.getElementById('clearWebhookBtn');
-const webhookStatusEl = document.getElementById('webhookStatus');
-
-function loadWebhookUrl(){
-  try{ return localStorage.getItem(WEBHOOK_KEY) || ''; }
-  catch(e){ return ''; }
-}
-function saveWebhookUrl(url){
-  try{ localStorage.setItem(WEBHOOK_KEY, url); }catch(e){ /* storage unavailable, ignore */ }
-}
-function clearWebhookUrl(){
-  try{ localStorage.removeItem(WEBHOOK_KEY); }catch(e){ /* ignore */ }
-}
-
-function setWebhookStatus(msg, kind){
-  webhookStatusEl.textContent = msg;
-  webhookStatusEl.className = 'modal-status' + (kind ? ' ' + kind : '');
-}
 
 function openSettings(){
-  webhookUrlInput.value = loadWebhookUrl();
   historyWebhookUrlInput.value = loadHistoryWebhookUrl();
   workerUrlInput.value = loadWorkerUrl();
   workerSecretInput.value = loadWorkerSecret();
-  const hasUrl = !!loadWebhookUrl();
-  let msg = hasUrl ? 'Webhook is saved on this device.' : 'No webhook saved yet.';
-  if(hasUrl && !discordEnabled.checked) msg += ' Posting is currently turned off via the "Post to Discord" checkbox on the main page.';
-  setWebhookStatus(msg);
   settingsOverlay.classList.remove('hidden');
   lockBodyScroll();
 }
@@ -3384,54 +3178,6 @@ settingsOverlay.addEventListener('click', e => {
 });
 document.addEventListener('keydown', e => {
   if(e.key === 'Escape' && !settingsOverlay.classList.contains('hidden')) closeSettings();
-});
-
-saveWebhookBtn.addEventListener('click', () => {
-  const url = webhookUrlInput.value.trim();
-  if(!url){ setWebhookStatus('Enter a webhook URL first.', 'err'); return; }
-  if(!/^https:\/\/(discord\.com|discordapp\.com)\/api\/webhooks\//.test(url)){
-    setWebhookStatus('That doesn\'t look like a Discord webhook URL.', 'err');
-    return;
-  }
-  saveWebhookUrl(url);
-  setWebhookStatus('Saved. Rolls will now post to this webhook.', 'ok');
-  refreshDiscordWarning();
-});
-
-clearWebhookBtn.addEventListener('click', async () => {
-  if(!await confirmModal('Remove the saved Discord webhook?', 'Remove')) return;
-  clearWebhookUrl();
-  webhookUrlInput.value = '';
-  setWebhookStatus('Webhook removed.');
-  refreshDiscordWarning();
-});
-
-testWebhookBtn.addEventListener('click', async () => {
-  const url = webhookUrlInput.value.trim();
-  if(!url){ setWebhookStatus('Enter a webhook URL first.', 'err'); return; }
-  testWebhookBtn.disabled = true;
-  setWebhookStatus('Sending test message…');
-  try{
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        embeds: [{
-          title: 'LootOps - Test message',
-          description: 'If you can see this, your webhook is set up correctly.',
-          color: EMBED_COLOR
-        }]
-      })
-    });
-    if(res.ok || res.status === 204){
-      setWebhookStatus('Test message sent — check Discord.', 'ok');
-    } else {
-      setWebhookStatus('Discord returned an error (HTTP ' + res.status + ').', 'err');
-    }
-  }catch(e){
-    setWebhookStatus('Could not reach Discord. Check the URL and your connection.', 'err');
-  }
-  testWebhookBtn.disabled = false;
 });
 
 // ---- History log webhook (separate channel, independent toggle) ----
@@ -3842,19 +3588,46 @@ async function consumeVoteResults(record){
   }));
 
   render(allNames, buckets, [], title, itemsSnapshot);
-  logRoll(allNames, buckets, [], title, when, itemsSnapshot, false);
+  logRoll(allNames, buckets, [], title, when, itemsSnapshot);
 
   lastRollResult = { title, when, names: allNames.slice(), buckets: buckets.map(b => b.slice()), itemsSnapshot };
   shareBtn.disabled = false;
   shareBtn.classList.add('ready');
 
-  const webhookUrl = loadWebhookUrl();
-  if(webhookUrl && discordEnabled.checked){
-    postRollToDiscord(webhookUrl, { title, when, names: allNames, buckets, leftover: [], itemsSnapshot, spreadEven: evenSpread.checked, capOne: oneEach.checked });
+  // Results are announced by the bot itself, into the same channel the vote was
+  // posted in — no separately-configured webhook needed for that, since the bot
+  // already has authorization there. Idempotent server-side, so a failed/retried
+  // call here can't double-post.
+  try{
+    const res = await workerFetch('/vote/' + record.id + '/announce', {
+      method: 'POST',
+      body: JSON.stringify({
+        names: allNames, buckets, leftover: unwanted.map(it => it.name),
+        when, spreadEven: evenSpread.checked, capOne: oneEach.checked,
+      }),
+    });
+    if(res.ok){
+      discordStatusEl.textContent = '✓ Results posted to Discord.';
+      discordStatusEl.className = 'ok';
+    } else {
+      discordStatusEl.textContent = 'Failed to post results to Discord.';
+      discordStatusEl.className = 'err';
+    }
+  }catch(e){
+    discordStatusEl.textContent = 'Could not reach the Worker to post results.';
+    discordStatusEl.className = 'err';
   }
+
   const historyWebhookUrl = loadHistoryWebhookUrl();
   if(historyWebhookUrl && historyWebhookEnabled.checked){
-    postRollToHistoryLog(historyWebhookUrl, { title, when, names: allNames, buckets, leftover: [], itemsSnapshot, spreadEven: evenSpread.checked, capOne: oneEach.checked });
+    // buildRollEmbeds (used by postRollToHistoryLog) expects a { label, qty }
+    // shape for its Loot Pool line — distinct from the { name, displayName,
+    // detail, quality, scu } shape render()/logRoll() use above.
+    const webhookItemsSnapshot = record.items.map(it => ({
+      label: it.name + (it.info ? ` (${it.info})` : ''),
+      qty: it.qty,
+    }));
+    postRollToHistoryLog(historyWebhookUrl, { title, when, names: allNames, buckets, leftover: unwanted.map(it => it.name), itemsSnapshot: webhookItemsSnapshot, spreadEven: evenSpread.checked, capOne: oneEach.checked });
   }
 }
 
@@ -3927,27 +3700,6 @@ function buildRollEmbeds(data){
   return [mainEmbed, resultsEmbed];
 }
 
-async function postRollToDiscord(url, data){
-  const embeds = buildRollEmbeds(data);
-  try{
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ embeds })
-    });
-    if(res.ok || res.status === 204){
-      discordStatusEl.textContent = '✓ Posted to Discord.';
-      discordStatusEl.className = 'ok';
-    } else {
-      discordStatusEl.textContent = 'Discord post failed (HTTP ' + res.status + ').';
-      discordStatusEl.className = 'err';
-    }
-  }catch(e){
-    discordStatusEl.textContent = 'Could not reach Discord to post the roll.';
-    discordStatusEl.className = 'err';
-  }
-}
-
 async function postRollToHistoryLog(url, data){
   const embeds = buildRollEmbeds(data);
   try{
@@ -3962,116 +3714,10 @@ async function postRollToHistoryLog(url, data){
   }catch(e){ /* best-effort log, ignore */ }
 }
 
-async function postUndoToDiscord(url, entry, reason){
-  const embed = {
-    title: 'Roll Undone',
-    color: EMBED_COLOR_UNDO,
-    fields: [
-      { name: 'Roll', value: escDiscord(entry.title || 'Untitled Roll'), inline: false },
-      { name: 'Reason', value: escDiscord(reason), inline: false },
-      { name: 'Originally Posted', value: escDiscord(entry.when), inline: false }
-    ]
-  };
-  try{
-    await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ embeds: [embed] })
-    });
-  }catch(e){ /* silent — the local undo already succeeded regardless of Discord reachability */ }
-}
-
 // Discord uses simple markdown — escape characters that would otherwise format unexpectedly
 function escDiscord(s){
   return String(s).replace(/([*_~`|>])/g, '\\$1');
 }
-
-rollBtn.addEventListener('click', () => {
-  errorEl.textContent = '';
-  discordStatusEl.textContent = '';
-  const names = namesArr.slice();
-  const items = [];
-  itemsArr.forEach(({ name, qty }) => { for(let i = 0; i < Math.min(qty, MAX_ITEM_QTY); i++) items.push(name); });
-  const title = rollTitleInput.value.trim();
-
-  if(names.length === 0){ errorEl.textContent = 'Add at least one name.'; return; }
-  if(items.length === 0){ errorEl.textContent = 'Add at least one item.'; return; }
-  if(!title){ errorEl.textContent = 'Add a title before rolling.'; return; }
-
-  rollBtn.disabled = true;
-  results.innerHTML = '';
-
-  // quick shuffle animation: show scrambled placeholders briefly, then settle
-  names.forEach((name, i) => {
-    const card = document.createElement('div');
-    card.className = 'card';
-    card.innerHTML = `<div class="name">${escapeHtml(name)} <span class="idx">#${i+1}</span></div><ul><li class="rolling">rolling…</li></ul>`;
-    results.appendChild(card);
-  });
-
-  setTimeout(() => {
-    const { buckets, leftover } = assign(names, items, evenSpread.checked, oneEach.checked);
-    const when = new Date().toLocaleString();
-    // Taken once, right here, so the result cards, the history entry, and the share
-    // card all agree on exactly the same quality/SCU/category data for this roll.
-    const itemsSnapshot = snapshotItemsForRoll();
-    const webhookUrl = loadWebhookUrl();
-    const willPostToDiscord = !!(webhookUrl && discordEnabled.checked);
-    const historyWebhookUrl = loadHistoryWebhookUrl();
-    const willLogToHistory = !!(historyWebhookUrl && historyWebhookEnabled.checked);
-    render(names, buckets, leftover, title, itemsSnapshot);
-    logRoll(names, buckets, leftover, title, when, itemsSnapshot, willPostToDiscord);
-    rollBtn.disabled = false;
-
-    lastRollResult = {
-      title, when, names: names.slice(),
-      buckets: buckets.map(b => b.slice()),
-      itemsSnapshot
-    };
-    shareBtn.disabled = false;
-    shareBtn.classList.add('ready');
-
-    if(willPostToDiscord){
-      postRollToDiscord(webhookUrl, {
-        title, when, names, buckets, leftover,
-        itemsSnapshot: itemsArr.map(it => ({ label: it.label || it.name, qty: it.qty })),
-        spreadEven: evenSpread.checked, capOne: oneEach.checked
-      });
-    }
-    if(willLogToHistory){
-      postRollToHistoryLog(historyWebhookUrl, {
-        title, when, names, buckets, leftover,
-        itemsSnapshot: itemsArr.map(it => ({ label: it.label || it.name, qty: it.qty })),
-        spreadEven: evenSpread.checked, capOne: oneEach.checked
-      });
-    }
-  }, 420);
-});
-
-undoRollBtn.addEventListener('click', async () => {
-  const reason = await undoReasonModal();
-  if(reason === null) return;
-
-  const entries = loadHistory();
-  const entry = entries.pop();
-  if(!entry) return; // button shouldn't be visible/clickable with no history, but guard anyway
-
-  saveHistory(entries);
-  setLastRollUndone(true);
-  renderHistory();
-  if(!historyOverlay.classList.contains('hidden')) renderHistoryModalList();
-
-  results.innerHTML = '';
-  resultsTitleEl.textContent = '';
-  lastRollResult = null;
-  shareBtn.disabled = true;
-  shareBtn.classList.remove('ready');
-
-  if(entry.postedToDiscord){
-    const webhookUrl = loadWebhookUrl();
-    if(webhookUrl) postUndoToDiscord(webhookUrl, entry, reason);
-  }
-});
 
 // ---- Star Citizen Wiki item search ----
 const WIKI_CATEGORIES = {
