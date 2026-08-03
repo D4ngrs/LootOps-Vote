@@ -28,7 +28,7 @@
 - Produces: `loadWorkerUrl()`, `saveWorkerUrl(url)`, `loadWorkerSecret()`, `saveWorkerSecret(secret)` — used by all later tasks to build `fetch` calls against the Worker.
 - Produces: `workerFetch(path, options)` — a thin wrapper that prefixes the Worker base URL and adds the `X-LootOps-Auth` header, used by every later task instead of raw `fetch`.
 
-- [ ] **Step 1: Add settings fields**
+- [x] **Step 1: Add settings fields**
 
 Add a new section to the existing settings modal (`#settingsOverlay`, alongside the Discord Webhook and History Log Webhook sections added in the previous stage), following the exact same markup pattern (`modal-label`, `entry-input`, `modal-hint`, `modal-actions` with Save/Clear, `modal-status`):
 
@@ -47,7 +47,7 @@ Add a new section to the existing settings modal (`#settingsOverlay`, alongside 
 <div class="modal-status" id="workerConfigStatus"></div>
 ```
 
-- [ ] **Step 2: Add the JS state + `workerFetch` helper**
+- [x] **Step 2: Add the JS state + `workerFetch` helper**
 
 Near the existing webhook JS block:
 
@@ -114,11 +114,11 @@ clearWorkerConfigBtn.addEventListener('click', async () => {
 
 In `openSettings()`, populate both fields the same way `webhookUrlInput`/`historyWebhookUrlInput` already are: `workerUrlInput.value = loadWorkerUrl(); workerSecretInput.value = loadWorkerSecret();`.
 
-- [ ] **Step 3: Verify in browser**
+- [x] **Step 3: Verify in browser**
 
 Open the app, go to settings, save a test Worker URL + secret, reload the page, reopen settings — confirm both fields still show the saved values (via localStorage, `rollcall_vote_worker_url_v1` / `rollcall_vote_worker_secret_v1`).
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add index.html
@@ -137,11 +137,11 @@ git push
 **Interfaces:**
 - Produces: `setNamesFromVotes(names)` — replaces `namesArr` wholesale and re-renders read-only, called by Task 6's results consumption.
 
-- [ ] **Step 1: Remove the name-entry input and Add button from the Names panel markup**
+- [x] **Step 1: Remove the name-entry input and Add button from the Names panel markup**
 
 Remove the `<input id="nameEntry">` and `#nameAddBtn` elements from the Names panel. Replace the panel's helper text (currently "Type and press Enter to add. Click × to remove.") with something like: `Populated automatically once vote results come in — no manual entry.`
 
-- [ ] **Step 2: Simplify `renderNamesList` to read-only (no remove button) and remove `addName`/`commitNameEntry`**
+- [x] **Step 2: Simplify `renderNamesList` to read-only (no remove button) and remove `addName`/`commitNameEntry`**
 
 ```js
 function renderNamesList(){
@@ -166,15 +166,15 @@ function setNamesFromVotes(names){
 
 Remove the `nameEntry`/`nameWarningEl`/`commitNameEntry`/keydown/`nameAddBtn` event wiring entirely (no longer applicable).
 
-- [ ] **Step 3: Update `resetBtn` handler**
+- [x] **Step 3: Update `resetBtn` handler**
 
 In the reset handler (~line 2297-2312), `namesArr = []` stays, but drop the now-removed `nameWarningEl.textContent = ''` line.
 
-- [ ] **Step 4: Verify in browser**
+- [x] **Step 4: Verify in browser**
 
 Confirm the Names panel shows "Nothing added yet." (or equivalent empty state) with no input/Add button, and no console errors from removed element references.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add index.html
@@ -193,7 +193,7 @@ git push
 **Interfaces:**
 - Produces: `selectedRoleId` (module-level variable, `null` until a role is picked) and `flavorTextInput` — consumed by Task 4's `postVote` payload builder.
 
-- [ ] **Step 1: Add the markup**
+- [x] **Step 1: Add the markup**
 
 Near the `#rollTitle` title-row, add:
 
@@ -211,7 +211,7 @@ Near the `#rollTitle` title-row, add:
 </div>
 ```
 
-- [ ] **Step 2: Add the role-fetching + autocomplete JS**
+- [x] **Step 2: Add the role-fetching + autocomplete JS**
 
 Mirroring `renderWikiSuggestions`/`selectSuggestion`/`setActiveSuggestion` (~line 3971-4031):
 
@@ -291,11 +291,11 @@ roleSearchInput.addEventListener('keydown', e => {
 const flavorTextInput = document.getElementById('flavorTextInput');
 ```
 
-- [ ] **Step 3: Verify in browser**
+- [x] **Step 3: Verify in browser**
 
 With a Worker URL/secret configured (Task 1) and pointed at the real test server, type a few letters of an existing role name (e.g. "loot" for the `LootOps` role) — confirm suggestions appear, clicking one fills the input and clears suggestions. Typing further after a selection clears `selectedRoleId` (confirm via a temporary `console.log(selectedRoleId)` or by checking Task 4's posted payload later).
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add index.html
@@ -315,7 +315,7 @@ git push
 - Consumes: `itemsArr`, `rollTitleInput`, `selectedRoleId`, `flavorTextInput`, `workerFetch` from earlier tasks.
 - Produces: `PENDING_VOTE_KEY` localStorage entry `{voteId, title, postedAt}`, and `postItemsForVoting()` — triggers Task 5's status polling once called.
 
-- [ ] **Step 1: Add the button**
+- [x] **Step 1: Add the button**
 
 Near the existing `.roll-row` buttons, add (as a new row above it, since Roll no longer applies without votes — see Task 5 for how Roll's role changes):
 
@@ -327,7 +327,7 @@ Near the existing `.roll-row` buttons, add (as a new row above it, since Roll no
 </div>
 ```
 
-- [ ] **Step 2: Add the item-payload mapping and post logic**
+- [x] **Step 2: Add the item-payload mapping and post logic**
 
 Reuses the exact fields `snapshotItemsForRoll()` already computes, converting to the Worker's expected shape (stripping the surrounding parens `detail` already has, matching the existing `formatWonItemHtml` convention at line 2721):
 
@@ -393,11 +393,11 @@ postVoteBtn.addEventListener('click', async () => {
 });
 ```
 
-- [ ] **Step 3: Verify in browser**
+- [x] **Step 3: Verify in browser**
 
 Add a title and a couple of items, click "Post to Discord for Voting" (with Task 1's settings pointed at the real test Worker) — confirm a real Discord message posts (same as the manual `curl` tests from the backend stage), and `localStorage.getItem('rollcall_vote_pending_v1')` shows the returned `voteId`.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add index.html
@@ -417,13 +417,13 @@ git push
 - Consumes: `loadPendingVote()`, `workerFetch` from Task 4.
 - Produces: `renderVoteStatus()`, `checkVoteResults()` — called on page load and after posting; hands off to Task 6's `consumeVoteResults(record)` once a vote is `ready`.
 
-- [ ] **Step 1: Add the status area markup**
+- [x] **Step 1: Add the status area markup**
 
 ```html
 <div id="voteStatus" class="hidden"></div>
 ```
 
-- [ ] **Step 2: Add the status rendering + manual override + polling logic**
+- [x] **Step 2: Add the status rendering + manual override + polling logic**
 
 ```js
 const voteStatusPanel = document.getElementById('voteStatus');
@@ -482,11 +482,11 @@ renderVoteStatus();
 if(loadPendingVote()) checkVoteResults();
 ```
 
-- [ ] **Step 3: Verify in browser**
+- [x] **Step 3: Verify in browser**
 
 With a pending vote from Task 4's test: reload the page — confirm the vote-status area reappears (status persisted via localStorage) and "Check Status" re-fetches without erroring. Leave Task 6 unimplemented for now — `consumeVoteResults` will just be undefined, so this step only verifies the pending/status/fetch plumbing, not the full completion (a `ReferenceError` on `consumeVoteResults` is expected and fine until Task 6 lands).
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add index.html
@@ -505,7 +505,7 @@ git push
 - Consumes: `assign()`, `render()`, `logRoll()`, `postRollToDiscord()`, `postRollToHistoryLog()`, `setNamesFromVotes()` (Task 2), `loadWebhookUrl()`/`discordEnabled`, `loadHistoryWebhookUrl()`/`historyWebhookEnabled` (all pre-existing).
 - Produces: `consumeVoteResults(record)`, the `renderUnwantedItems(items)` UI, and `reimportUnwantedItems()`.
 
-- [ ] **Step 1: Add the unwanted-items UI**
+- [x] **Step 1: Add the unwanted-items UI**
 
 ```html
 <div id="unwantedItemsPanel" class="hidden">
@@ -515,7 +515,7 @@ git push
 </div>
 ```
 
-- [ ] **Step 2: Implement `consumeVoteResults`**
+- [x] **Step 2: Implement `consumeVoteResults`**
 
 This is the core adaptation layer: vote results (`{itemIndex: [voters]}`, keyed against `record.items`) become the same `(names, buckets, leftover)` shape `assign()`/`render()`/`logRoll()` already expect for a normal roll.
 
@@ -611,14 +611,14 @@ document.getElementById('reimportUnwantedBtn').addEventListener('click', () => {
 
 **Note on `itemInfo` round-tripping:** the item's `quality`/`scu` display strings (`"Q500"`, `"2 SCU"`) posted to Discord in Task 4 are not parsed back into numeric `quality`/`scu` here — the post-roll result cards only need `detail`/name text, which `itemsSnapshot` above supplies from `record.items[].info`. This matches how `formatWonItemHtml` already degrades gracefully when `quality`/`scu` are absent from a snapshot entry (line 2713-2723) — the roll result cards simply won't show a quality/SCU badge for vote-driven items, only the name and detail text. This is an accepted simplification for this stage.
 
-- [ ] **Step 3: Verify in browser end-to-end**
+- [x] **Step 3: Verify in browser end-to-end**
 
 1. Configure Worker settings (Task 1), add 2-3 items, add a title, click "Post to Discord for Voting."
 2. In Discord, react to one item with a single person, another item with two+ people (a second Discord account or ask a friend), leave one item unreacted.
 3. Click "Start Rolling Now," confirm.
 4. Verify: Names panel shows exactly the voters involved; results cards show the single-voter item assigned directly, the multi-voter item rolled among just its voters; the zero-voter item appears in "Unwanted Items" with a working reimport button; roll history has a new entry; both webhooks fire if configured (per the previous stage's toggles).
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add index.html
@@ -628,13 +628,19 @@ git push
 
 ---
 
+**Bugs found and fixed during execution (not in the original plan):**
+- **Role-suggestion race condition** — typing several characters quickly fired overlapping async `renderRoleSuggestions()` calls; each cleared the suggestion list before awaiting `ensureRolesLoaded()`, but appended results after, without re-clearing, so fast typing produced duplicated suggestion entries. Fixed with a request-token guard (`roleSuggestionRequestId`) that discards stale calls.
+- **Missing `.hidden` CSS rules** — this codebase scopes `.hidden` per-element (e.g. `#undoRollBtn.hidden`) rather than as a generic rule; the new `#voteStatus` and `#unwantedItemsPanel` elements used `class="hidden"` without matching CSS, so `unwantedItemsPanel` (which has static child markup) was visibly showing on every page load. Fixed by adding `#voteStatus.hidden{display:none;}` and `#unwantedItemsPanel.hidden{display:none;}`.
+
+Both verified fixed live in-browser (see Task 3 and Task 6 verification notes above).
+
 ## Verification Checklist
 
-- [ ] Names panel has no manual entry UI anywhere; it populates only from `setNamesFromVotes`.
-- [ ] Role autocomplete correctly resolves a typed name to the role's ID (verified via a real posted vote showing the spoilered ping).
-- [ ] Flavor text appears in the posted Discord message when set, omitted when blank.
-- [ ] "Post to Discord for Voting" round-trips items through the same `quality`/`scu`/`detail` dedup logic already used elsewhere (no re-implemented rules).
-- [ ] A pending vote survives a page reload (localStorage) and "Check Status" correctly re-fetches.
-- [ ] "Start Rolling Now" requires confirmation and finalizes early.
-- [ ] 1-voter items are assigned directly (no roll); 2+-voter items are rolled only among their own voters; 0-voter items go to "Unwanted Items" and reimport correctly.
-- [ ] The existing roll-completion pipeline (results cards, history, both webhooks, share card) fires unchanged for vote-driven rolls.
+- [x] Names panel has no manual entry UI anywhere; it populates only from `setNamesFromVotes`.
+- [x] Role autocomplete correctly resolves a typed name to the role's ID (verified via a real posted vote showing the spoilered ping).
+- [x] Flavor text appears in the posted Discord message when set, omitted when blank.
+- [x] "Post to Discord for Voting" round-trips items through the same `quality`/`scu`/`detail` dedup logic already used elsewhere (no re-implemented rules).
+- [x] A pending vote survives a page reload (localStorage) and "Check Status" correctly re-fetches.
+- [x] "Start Rolling Now" requires confirmation and finalizes early.
+- [x] 1-voter items are assigned directly (no roll); 2+-voter items are rolled only among their own voters; 0-voter items go to "Unwanted Items" and reimport correctly.
+- [x] The existing roll-completion pipeline (results cards, history, both webhooks, share card) fires unchanged for vote-driven rolls.
