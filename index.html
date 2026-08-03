@@ -1706,6 +1706,9 @@ const APP_VERSION = 'v0.8.2';
       </svg>
       <span class="btn-label">Share</span>
     </button>
+    <button id="lootSheetBtn" type="button" class="ghost-btn" disabled aria-label="Open loot sheet">
+      <span class="btn-label">📋 Loot Sheet</span>
+    </button>
   </div>
   <div id="error"></div>
   <div id="discordStatus"></div>
@@ -2232,6 +2235,7 @@ function resetRollState(){
   lastRollResult = null;
   shareBtn.disabled = true;
   shareBtn.classList.remove('ready');
+  lootSheetBtn.disabled = true;
   renderNamesList();
   renderItemsList();
 }
@@ -3011,6 +3015,15 @@ function closeShareModal(){
 }
 // Wrapped in an arrow function so the click MouseEvent isn't passed through as `result`.
 shareBtn.addEventListener('click', () => openShareModal());
+
+const lootSheetBtn = document.getElementById('lootSheetBtn');
+lootSheetBtn.addEventListener('click', () => {
+  if(!lastRollResult) return;
+  const html = buildLootSheetHtml(lastRollResult);
+  const blob = new Blob([html], { type: 'text/html' });
+  const url = URL.createObjectURL(blob);
+  window.open(url, '_blank');
+});
 
 // Builds a share-modal result object from a saved history entry, matching the shape
 // buildShareCardHtml expects — history entries already store title/names/buckets/
@@ -3906,6 +3919,7 @@ async function consumeVoteResults(record){
   };
   shareBtn.disabled = false;
   shareBtn.classList.add('ready');
+  lootSheetBtn.disabled = false;
 
   // Results are announced by the bot itself, into the same channel the vote was
   // posted in — no separately-configured webhook needed for that, since the bot
