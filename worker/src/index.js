@@ -400,7 +400,7 @@ async function finalizeVote(env, voteId){
   if(!raw) return { ok: false, error: 'not_found' };
 
   const record = JSON.parse(raw);
-  if(record.status === 'ready') return { ok: true, record }; // idempotent
+  if(record.status === 'ready' || record.status === 'aborted') return { ok: true, record }; // idempotent
 
   let results;
   try{
@@ -549,6 +549,25 @@ async function finalizeVoteEndpoint(voteId, env){
   return jsonResponse(result.record);
 }
 
+// Cancels a vote before it's rolled — the officer's escape hatch after
+// posting when they need to change the item list. Doesn't touch the
+// already-posted Discord message(s); it just stops the vote from ever being
+// finalized (the cron sweep only picks up status "pending", and finalizeVote
+// treats "aborted" as a terminal, idempotent no-op) so the officer is free to
+// post a fresh vote instead.
+async function abortVoteEndpoint(voteId, env){
+  const raw = await env.VOTES_KV.get(`vote:${voteId}`);
+  if(!raw) return jsonResponse({ error: 'Vote not found' }, 404);
+
+  const record = JSON.parse(raw);
+  if(record.status === 'pending'){
+    record.status = 'aborted';
+    record.abortedAt = Date.now();
+    await env.VOTES_KV.put(`vote:${voteId}`, JSON.stringify(record));
+  }
+  return jsonResponse(record);
+}
+
 export default {
   async fetch(request, env, ctx){
     if(request.method === 'OPTIONS'){
@@ -583,7 +602,7 @@ export default {
       }
     }
 
-    const voteMatch = url.pathname.match(/^\/vote\/([^/]+)(\/finalize|\/announce)?$/);
+    const voteMatch = url.pathname.match(/^\/vote\/([^/]+)(\/finalize|\/announce|\/abort)?$/);
     if(voteMatch && request.method === 'GET' && !voteMatch[2]){
       return getVote(voteMatch[1], env);
     }
@@ -592,6 +611,9 @@ export default {
     }
     if(voteMatch && request.method === 'POST' && voteMatch[2] === '/announce'){
       return announceResults(voteMatch[1], request, env);
+    }
+    if(voteMatch && request.method === 'POST' && voteMatch[2] === '/abort'){
+      return abortVoteEndpoint(voteMatch[1], env);
     }
 
     return jsonResponse({ error: 'Not found', path: url.pathname }, 404);

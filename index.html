@@ -568,6 +568,8 @@ const APP_VERSION = 'v0.8.2';
   #postVoteBtn:active{transform:translateY(0px);}
   #postVoteBtn:disabled{opacity:.6; cursor:default; transform:none; box-shadow:none;}
   #voteStatus.hidden{display:none;}
+  .vote-status-msg{margin-left:8px; font-size:12px; color:var(--muted);}
+  .vote-status-msg.err{color:var(--bad);}
   #unwantedItemsPanel.hidden{display:none;}
 
   /* Shared by #postVoteBtn/#shareBtn: a big, low-opacity icon centered behind the
@@ -3544,26 +3546,83 @@ function renderVoteStatus(){
     await finalizeVoteNow(pending.voteId);
   });
   voteStatusPanel.appendChild(finalizeBtn);
+
+  const abortBtn = document.createElement('button');
+  abortBtn.type = 'button';
+  abortBtn.className = 'ghost-btn danger';
+  abortBtn.textContent = 'Abort';
+  abortBtn.addEventListener('click', async () => {
+    if(!await confirmModal('Cancel this vote? The posted Discord message stays up, but it will never be rolled — you\'ll be free to edit items and post a new vote.', 'Abort Vote')) return;
+    await abortVoteNow(pending.voteId);
+  });
+  voteStatusPanel.appendChild(abortBtn);
+
+  const statusMsg = document.createElement('span');
+  statusMsg.className = 'vote-status-msg';
+  statusMsg.id = 'voteStatusMsg';
+  voteStatusPanel.appendChild(statusMsg);
+}
+
+function setVoteStatusMsg(text, kind){
+  const statusMsg = document.getElementById('voteStatusMsg');
+  if(!statusMsg) return;
+  statusMsg.textContent = text;
+  statusMsg.className = 'vote-status-msg' + (kind ? ' ' + kind : '');
 }
 
 async function checkVoteResults(){
   const pending = loadPendingVote();
   if(!pending) return;
+  setVoteStatusMsg('Checking…');
   try{
     const res = await workerFetch('/vote/' + pending.voteId);
-    if(!res.ok) return;
+    if(!res.ok){
+      setVoteStatusMsg('Could not check status (HTTP ' + res.status + ').', 'err');
+      return;
+    }
     const record = await res.json();
-    if(record.status === 'ready') await consumeVoteResults(record);
-  }catch(e){ /* leave pending, user can retry */ }
+    if(record.status === 'ready'){
+      await consumeVoteResults(record);
+    }else{
+      setVoteStatusMsg('Still open — no results yet.');
+    }
+  }catch(e){
+    setVoteStatusMsg('Could not reach the Worker to check status.', 'err');
+  }
 }
 
 async function finalizeVoteNow(voteId){
+  setVoteStatusMsg('Rolling…');
   try{
     const res = await workerFetch('/vote/' + voteId + '/finalize', { method: 'POST' });
-    if(!res.ok) return;
+    if(!res.ok){
+      setVoteStatusMsg('Could not start rolling (HTTP ' + res.status + ').', 'err');
+      return;
+    }
     const record = await res.json();
-    if(record.status === 'ready') await consumeVoteResults(record);
-  }catch(e){ /* leave pending, user can retry */ }
+    if(record.status === 'ready'){
+      await consumeVoteResults(record);
+    }else{
+      setVoteStatusMsg('Roll did not complete — try again.', 'err');
+    }
+  }catch(e){
+    setVoteStatusMsg('Could not reach the Worker to start rolling.', 'err');
+  }
+}
+
+async function abortVoteNow(voteId){
+  setVoteStatusMsg('Cancelling…');
+  try{
+    const res = await workerFetch('/vote/' + voteId + '/abort', { method: 'POST' });
+    if(!res.ok){
+      setVoteStatusMsg('Could not cancel the vote (HTTP ' + res.status + ').', 'err');
+      return;
+    }
+    clearPendingVote();
+    renderVoteStatus();
+  }catch(e){
+    setVoteStatusMsg('Could not reach the Worker to cancel the vote.', 'err');
+  }
 }
 
 // On load, resume showing a pending vote's status if one exists from a previous session.
