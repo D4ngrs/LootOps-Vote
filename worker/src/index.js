@@ -1,7 +1,7 @@
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, X-LootOps-Auth',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 };
 
 function jsonResponse(body, status = 200){
@@ -11,9 +11,13 @@ function jsonResponse(body, status = 200){
   });
 }
 
-function isAuthorized(request, env){
-  const provided = request.headers.get('X-LootOps-Auth') || '';
-  return provided.length > 0 && provided === env.SHARED_AUTH_SECRET;
+async function isAuthorizedSession(request, env){
+  const authHeader = request.headers.get('Authorization') || '';
+  const match = authHeader.match(/^Bearer\s+(.+)$/);
+  if(!match) return false;
+  const payload = await verifyToken(env.SESSION_SIGNING_SECRET, match[1]);
+  if(!payload || typeof payload.exp !== 'number') return false;
+  return payload.exp > Math.floor(Date.now() / 1000);
 }
 
 function base64urlEncode(bytes){
@@ -550,11 +554,20 @@ export default {
       return new Response(null, { status: 204, headers: CORS_HEADERS });
     }
 
-    if(!isAuthorized(request, env)){
-      return jsonResponse({ error: 'Unauthorized' }, 401);
+    const url = new URL(request.url);
+
+    // Auth endpoints must be reachable *without* an existing session — that's
+    // the whole point of logging in.
+    if(url.pathname === '/auth/login' && request.method === 'GET'){
+      return handleAuthLogin(request, env);
+    }
+    if(url.pathname === '/auth/callback' && request.method === 'GET'){
+      return handleAuthCallback(request, env);
     }
 
-    const url = new URL(request.url);
+    if(!await isAuthorizedSession(request, env)){
+      return jsonResponse({ error: 'Unauthorized' }, 401);
+    }
 
     if(url.pathname === '/vote' && request.method === 'POST'){
       return postVote(request, env);
