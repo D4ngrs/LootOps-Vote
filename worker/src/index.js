@@ -141,15 +141,15 @@ function buildMessageBatches(items){
 // Item name (info, italic) | Quality | SCU size | Quantity — the shared part
 // of the item layout, reused both for the voting message (with an emoji
 // prefixed) and the Loot Pool line in the results announcement (no emoji,
-// voting is already over by then). Quality/SCU/info are supplied by the
-// frontend (already deduped there, e.g. via buildDetailLabel) and are only
-// included when present — never shown as empty/placeholder segments.
+// voting is already over by then). info/quality/scu are supplied by the
+// frontend as raw values (already deduped there, e.g. via buildDetailLabel)
+// — this function does the "Q"/"SCU" display formatting itself, and only
+// includes a field when present (quality 0 is a valid value, not "absent").
 function formatItemSummary(it){
-  const namePart = `**${it.name}**` + (it.info ? ` _(${it.info})_` : '');
+  const namePart = `${it.qty}× **${it.name}**` + (it.info ? ` _(${it.info})_` : '');
   const segments = [namePart];
-  if(it.quality) segments.push(it.quality);
-  if(it.scu) segments.push(it.scu);
-  segments.push(`x${it.qty}`);
+  if(it.quality !== null && it.quality !== undefined) segments.push('Q' + it.quality);
+  if(it.scu !== null && it.scu !== undefined) segments.push(it.scu + ' SCU');
   return segments.join('  |  ');
 }
 function formatItemLine(it){
@@ -297,7 +297,7 @@ async function announceResults(voteId, request, env){
   let body;
   try{ body = await request.json(); }
   catch(e){ return jsonResponse({ error: 'Invalid JSON body' }, 400); }
-  const { names, buckets, leftover, when, spreadEven, capOne } = body;
+  const { names, buckets, leftover, when, spreadEven, capOne, historyWebhookUrl } = body;
   if(!Array.isArray(names) || !Array.isArray(buckets)){
     return jsonResponse({ error: 'names and buckets are required arrays' }, 400);
   }
@@ -355,6 +355,20 @@ async function announceResults(voteId, request, env){
     await postDiscordEmbeds(env, [mainEmbed, resultsEmbed]);
   }catch(e){
     return jsonResponse({ error: 'Failed to post results', detail: String(e) }, 502);
+  }
+
+  // Optional second channel, posted with the exact same embeds as the main
+  // announcement — the two are meant to be identical, so this is a single
+  // source of truth for the content rather than a separately-built copy.
+  // Best-effort: the main announcement already succeeded regardless.
+  if(historyWebhookUrl){
+    try{
+      await fetch(historyWebhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ embeds: [mainEmbed, resultsEmbed] }),
+      });
+    }catch(e){ /* best-effort, main announcement already succeeded */ }
   }
 
   record.announced = true;

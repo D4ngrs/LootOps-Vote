@@ -3153,7 +3153,6 @@ document.addEventListener('keydown', e => {
 });
 
 const EMBED_COLOR = 0xE8A33D; // matches --gold, used for the main setup embed
-const EMBED_COLOR_RESULTS = 0x7C6FF0; // matches --violet, used for the results embed
 
 const settingsOverlay = document.getElementById('settingsOverlay');
 const discordSettingsBtn = document.getElementById('discordSettingsBtn');
@@ -3434,12 +3433,16 @@ function clearPendingVote(){
 // Reuses the exact fields already computed for each item (displayName, detail,
 // quality, scu) rather than re-deriving any of the dedup rules here — the
 // Worker just displays whatever it's given, blank fields included/excluded.
+// Sends raw quality/scu values (not pre-formatted display strings) — the
+// Worker formats them for Discord, and the on-screen result cards format
+// them separately (formatWonItemHtml already expects raw numbers here,
+// matching how it's always worked for manually-entered items).
 function buildVoteItemsPayload(){
   return itemsArr.map(it => ({
     name: it.displayName || it.name,
     info: it.detail ? it.detail.replace(/^\(|\)$/g, '') : null,
-    quality: (it.quality !== undefined && it.quality !== null) ? ('Q' + it.quality) : null,
-    scu: (it.scu !== undefined && it.scu !== null) ? (it.scu + ' SCU') : null,
+    quality: (it.quality !== undefined && it.quality !== null) ? it.quality : null,
+    scu: (it.scu !== undefined && it.scu !== null) ? it.scu : null,
     qty: it.qty,
   }));
 }
@@ -3584,7 +3587,7 @@ async function consumeVoteResults(record){
   const title = record.title || '';
   const when = new Date().toLocaleString();
   const itemsSnapshot = record.items.map(it => ({
-    name: it.name, displayName: it.name, detail: it.info ? `(${it.info})` : '', quality: null, scu: null,
+    name: it.name, displayName: it.name, detail: it.info ? `(${it.info})` : '', quality: it.quality, scu: it.scu,
   }));
 
   render(allNames, buckets, [], title, itemsSnapshot);
@@ -3596,14 +3599,18 @@ async function consumeVoteResults(record){
 
   // Results are announced by the bot itself, into the same channel the vote was
   // posted in — no separately-configured webhook needed for that, since the bot
-  // already has authorization there. Idempotent server-side, so a failed/retried
-  // call here can't double-post.
+  // already has authorization there. The Worker builds the embeds once and, if
+  // a history-log webhook is enabled, posts the exact same embeds there too —
+  // a single source of truth for the content rather than a separately-built
+  // copy. Idempotent server-side, so a failed/retried call here can't double-post.
+  const historyWebhookUrl = (historyWebhookEnabled.checked && loadHistoryWebhookUrl()) || undefined;
   try{
     const res = await workerFetch('/vote/' + record.id + '/announce', {
       method: 'POST',
       body: JSON.stringify({
         names: allNames, buckets, leftover: unwanted.map(it => it.name),
         when, spreadEven: evenSpread.checked, capOne: oneEach.checked,
+        historyWebhookUrl,
       }),
     });
     if(res.ok){
@@ -3616,18 +3623,6 @@ async function consumeVoteResults(record){
   }catch(e){
     discordStatusEl.textContent = 'Could not reach the Worker to post results.';
     discordStatusEl.className = 'err';
-  }
-
-  const historyWebhookUrl = loadHistoryWebhookUrl();
-  if(historyWebhookUrl && historyWebhookEnabled.checked){
-    // buildRollEmbeds (used by postRollToHistoryLog) expects a { label, qty }
-    // shape for its Loot Pool line — distinct from the { name, displayName,
-    // detail, quality, scu } shape render()/logRoll() use above.
-    const webhookItemsSnapshot = record.items.map(it => ({
-      label: it.name + (it.info ? ` (${it.info})` : ''),
-      qty: it.qty,
-    }));
-    postRollToHistoryLog(historyWebhookUrl, { title, when, names: allNames, buckets, leftover: unwanted.map(it => it.name), itemsSnapshot: webhookItemsSnapshot, spreadEven: evenSpread.checked, capOne: oneEach.checked });
   }
 }
 
@@ -3656,62 +3651,6 @@ document.getElementById('reimportUnwantedBtn').addEventListener('click', () => {
 function trimForEmbed(text){
   if(text.length <= 1024) return text;
   return text.slice(0, 1000) + '\n…(truncated)';
-}
-
-function buildRollEmbeds(data){
-  const { title, when, names, buckets, leftover, itemsSnapshot, spreadEven, capOne } = data;
-
-  const participantsText = trimForEmbed(names.map(escDiscord).join(', ') || '—');
-  const lootPoolText = trimForEmbed(
-    itemsSnapshot.map(it => `${escDiscord(it.label)} ×${it.qty}`).join('\n') || '—'
-  );
-  const resultsText = trimForEmbed(
-    names.map((name, i) => {
-      const got = buckets[i] || [];
-      return `**${escDiscord(name)}:** ${got.length ? got.map(escDiscord).join(', ') : '_nothing_'}`;
-    }).join('\n')
-  );
-
-  // Embed 1: roll setup — date/time on its own row, then participant count + mode side by side
-  const mainEmbed = {
-    title: title || 'Untitled Roll',
-    color: EMBED_COLOR,
-    fields: [
-      { name: 'Date & Time', value: when, inline: false },
-      { name: 'Participants', value: participantsText, inline: false },
-      { name: 'Roll Mode', value: `Spread evenly: ${spreadEven ? 'Yes' : 'No'}\nCap at 1 item: ${capOne ? 'Yes' : 'No'}`, inline: false },
-      { name: 'Loot Pool', value: lootPoolText, inline: false }
-    ]
-  };
-
-  // Embed 2: the actual outcome, kept separate for readability
-  const resultsFields = [
-    { name: 'Results', value: resultsText, inline: false }
-  ];
-  if(leftover && leftover.length){
-    resultsFields.push({ name: 'Leftovers (Unassigned)', value: trimForEmbed(leftover.map(escDiscord).join(', ')), inline: false });
-  }
-  const resultsEmbed = {
-    title: (title ? title + ' - ' : '') + 'Results',
-    color: EMBED_COLOR_RESULTS,
-    fields: resultsFields
-  };
-
-  return [mainEmbed, resultsEmbed];
-}
-
-async function postRollToHistoryLog(url, data){
-  const embeds = buildRollEmbeds(data);
-  try{
-    await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ embeds })
-    });
-    // Silent on success/failure — this is a best-effort internal log, not user-facing
-    // feedback. The primary webhook's status line already tells the roller whether
-    // the main post succeeded; a failed history log never blocks or affects the roll.
-  }catch(e){ /* best-effort log, ignore */ }
 }
 
 // Discord uses simple markdown — escape characters that would otherwise format unexpectedly
