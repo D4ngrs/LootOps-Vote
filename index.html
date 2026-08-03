@@ -1504,14 +1504,21 @@ const APP_VERSION = 'v0.8.2';
       <div class="modal-title">Discord Vote Worker</div>
       <label class="modal-label" for="workerUrlInput">Worker URL</label>
       <input type="text" class="entry-input" id="workerUrlInput" placeholder="https://lootops-vote-worker.your-subdomain.workers.dev" autocomplete="off">
-      <label class="modal-label" for="workerSecretInput" style="margin-top:10px;">Shared Secret</label>
-      <input type="password" class="entry-input" id="workerSecretInput" placeholder="Shared secret from wrangler secret put" autocomplete="off">
-      <div class="modal-hint">Connects to the Cloudflare Worker that posts item lists to Discord for voting and reads back results. Both values come from the Worker's own setup.</div>
+      <div class="modal-hint">The Cloudflare Worker that posts item lists to Discord for voting and reads back results.</div>
       <div class="modal-actions">
-        <button type="button" class="primary-btn" id="saveWorkerConfigBtn">Save</button>
-        <button type="button" class="ghost-btn danger" id="clearWorkerConfigBtn">Clear</button>
+        <button type="button" class="primary-btn" id="saveWorkerUrlBtn">Save URL</button>
       </div>
       <div class="modal-status" id="workerConfigStatus"></div>
+
+      <hr class="modal-divider">
+
+      <div class="modal-title">Officer Login</div>
+      <div class="modal-hint">Log in with Discord to authorize posting votes and rolling results. Only accounts with the Officer role can proceed; access is checked live at login and expires automatically.</div>
+      <div class="modal-status" id="workerLoginStatus"></div>
+      <div class="modal-actions">
+        <button type="button" class="primary-btn" id="workerLoginBtn">Log in with Discord</button>
+        <button type="button" class="ghost-btn danger hidden" id="workerLogoutBtn">Log out</button>
+      </div>
     </div>
   </div>
 
@@ -3161,7 +3168,7 @@ const closeSettingsBtn = document.getElementById('closeSettingsBtn');
 function openSettings(){
   historyWebhookUrlInput.value = loadHistoryWebhookUrl();
   workerUrlInput.value = loadWorkerUrl();
-  workerSecretInput.value = loadWorkerSecret();
+  updateLoginUI();
   settingsOverlay.classList.remove('hidden');
   lockBodyScroll();
 }
@@ -3274,7 +3281,7 @@ testHistoryWebhookBtn.addEventListener('click', async () => {
 
 // ---- Discord Vote Worker connection ----
 const WORKER_URL_KEY = 'rollcall_vote_worker_url_v1';
-const WORKER_SECRET_KEY = 'rollcall_vote_worker_secret_v1';
+const WORKER_SESSION_KEY = 'rollcall_vote_session_v1';
 
 function loadWorkerUrl(){
   try{ return (localStorage.getItem(WORKER_URL_KEY) || '').replace(/\/+$/, ''); }
@@ -3283,54 +3290,120 @@ function loadWorkerUrl(){
 function saveWorkerUrl(url){
   try{ localStorage.setItem(WORKER_URL_KEY, url.replace(/\/+$/, '')); }catch(e){ /* ignore */ }
 }
-function loadWorkerSecret(){
-  try{ return localStorage.getItem(WORKER_SECRET_KEY) || ''; }
+function loadSession(){
+  try{ return localStorage.getItem(WORKER_SESSION_KEY) || ''; }
   catch(e){ return ''; }
 }
-function saveWorkerSecret(secret){
-  try{ localStorage.setItem(WORKER_SECRET_KEY, secret); }catch(e){ /* ignore */ }
+function saveSession(token){
+  try{ localStorage.setItem(WORKER_SESSION_KEY, token); }catch(e){ /* ignore */ }
+}
+function clearSession(){
+  try{ localStorage.removeItem(WORKER_SESSION_KEY); }catch(e){ /* ignore */ }
+}
+// Client-side decode for display only (e.g. "Logged in as X") — this is not
+// a security check. The Worker independently verifies the signature and
+// expiry of every token on every request; a tampered token simply gets a
+// 401 from the Worker regardless of what this function shows on screen.
+function decodeSessionPayload(token){
+  if(!token || !token.includes('.')) return null;
+  try{
+    const [payloadB64] = token.split('.');
+    const padded = payloadB64.replace(/-/g, '+').replace(/_/g, '/').padEnd(payloadB64.length + (4 - payloadB64.length % 4) % 4, '=');
+    return JSON.parse(atob(padded));
+  }catch(e){
+    return null;
+  }
+}
+function isSessionValidLocally(){
+  const payload = decodeSessionPayload(loadSession());
+  return !!payload && typeof payload.exp === 'number' && payload.exp > Math.floor(Date.now() / 1000);
 }
 
 async function workerFetch(path, options = {}){
   const base = loadWorkerUrl();
   if(!base) throw new Error('No Worker URL configured');
-  return fetch(base + path, {
+  const res = await fetch(base + path, {
     ...options,
     headers: {
-      'X-LootOps-Auth': loadWorkerSecret(),
+      'Authorization': 'Bearer ' + loadSession(),
       'Content-Type': 'application/json',
       ...(options.headers || {}),
     },
   });
+  if(res.status === 401){
+    clearSession();
+    updateLoginUI();
+  }
+  return res;
 }
 
 const workerUrlInput = document.getElementById('workerUrlInput');
-const workerSecretInput = document.getElementById('workerSecretInput');
-const saveWorkerConfigBtn = document.getElementById('saveWorkerConfigBtn');
-const clearWorkerConfigBtn = document.getElementById('clearWorkerConfigBtn');
+const saveWorkerUrlBtn = document.getElementById('saveWorkerUrlBtn');
 const workerConfigStatusEl = document.getElementById('workerConfigStatus');
+const workerLoginBtn = document.getElementById('workerLoginBtn');
+const workerLogoutBtn = document.getElementById('workerLogoutBtn');
+const workerLoginStatusEl = document.getElementById('workerLoginStatus');
 
 function setWorkerConfigStatus(msg, kind){
   workerConfigStatusEl.textContent = msg;
   workerConfigStatusEl.className = 'modal-status' + (kind ? ' ' + kind : '');
 }
 
-saveWorkerConfigBtn.addEventListener('click', () => {
+saveWorkerUrlBtn.addEventListener('click', () => {
   const url = workerUrlInput.value.trim();
-  const secret = workerSecretInput.value.trim();
-  if(!url || !secret){ setWorkerConfigStatus('Enter both the Worker URL and shared secret.', 'err'); return; }
+  if(!url){ setWorkerConfigStatus('Enter the Worker URL.', 'err'); return; }
   saveWorkerUrl(url);
-  saveWorkerSecret(secret);
   setWorkerConfigStatus('Saved.', 'ok');
 });
 
-clearWorkerConfigBtn.addEventListener('click', async () => {
-  if(!await confirmModal('Remove the saved Worker URL and shared secret?', 'Remove')) return;
-  try{ localStorage.removeItem(WORKER_URL_KEY); localStorage.removeItem(WORKER_SECRET_KEY); }catch(e){ /* ignore */ }
-  workerUrlInput.value = '';
-  workerSecretInput.value = '';
-  setWorkerConfigStatus('Removed.');
+function updateLoginUI(){
+  const payload = isSessionValidLocally() ? decodeSessionPayload(loadSession()) : null;
+  if(payload){
+    workerLoginStatusEl.textContent = 'Logged in as ' + payload.username + '.';
+    workerLoginStatusEl.className = 'modal-status ok';
+    workerLoginBtn.classList.add('hidden');
+    workerLogoutBtn.classList.remove('hidden');
+  }else{
+    workerLoginStatusEl.textContent = 'Not logged in.';
+    workerLoginStatusEl.className = 'modal-status';
+    workerLoginBtn.classList.remove('hidden');
+    workerLogoutBtn.classList.add('hidden');
+  }
+}
+
+workerLoginBtn.addEventListener('click', () => {
+  const base = loadWorkerUrl();
+  if(!base){ setWorkerConfigStatus('Save the Worker URL first.', 'err'); return; }
+  const returnTo = location.href.split('#')[0];
+  location.href = base + '/auth/login?returnTo=' + encodeURIComponent(returnTo);
 });
+
+workerLogoutBtn.addEventListener('click', () => {
+  clearSession();
+  updateLoginUI();
+});
+
+// Pick up the OAuth redirect's #session=... or #error=... fragment, if present.
+(function consumeAuthRedirect(){
+  const hash = location.hash;
+  if(!hash) return;
+  const params = new URLSearchParams(hash.slice(1));
+  const session = params.get('session');
+  const error = params.get('error');
+  if(session){
+    saveSession(session);
+  }
+  if(session || error){
+    history.replaceState(null, '', location.pathname + location.search);
+  }
+  if(error){
+    setTimeout(() => {
+      workerLoginStatusEl.textContent = error;
+      workerLoginStatusEl.className = 'modal-status err';
+    }, 0);
+  }
+})();
+updateLoginUI();
 
 // ---- Role-ping autocomplete ----
 let rolesCache = null; // [{id, name}], fetched once per session
@@ -3453,7 +3526,7 @@ postVoteBtn.addEventListener('click', async () => {
   const title = rollTitleInput.value.trim();
   if(!title){ errorEl.textContent = 'Add a title before posting.'; return; }
   if(itemsArr.length === 0){ errorEl.textContent = 'Add at least one item before posting.'; return; }
-  if(!loadWorkerUrl() || !loadWorkerSecret()){ errorEl.textContent = 'Configure the Discord Vote Worker in settings first.'; return; }
+  if(!loadWorkerUrl() || !isSessionValidLocally()){ errorEl.textContent = 'Log in with Discord in settings first.'; return; }
 
   postVoteBtn.disabled = true;
   errorEl.textContent = '';
