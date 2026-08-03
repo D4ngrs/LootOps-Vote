@@ -1690,6 +1690,13 @@ const APP_VERSION = 'v0.8.2';
   </div>
 
   <div class="roll-row">
+    <button id="postVoteBtn" type="button">
+      <span class="btn-label">Post to Discord for Voting</span>
+    </button>
+  </div>
+  <div id="voteStatus" class="hidden"></div>
+
+  <div class="roll-row">
     <button id="undoRollBtn" type="button" class="hidden">
       <svg class="btn-bg-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <polyline points="1 4 1 10 7 10"/>
@@ -3655,6 +3662,125 @@ roleSearchInput.addEventListener('keydown', e => {
 });
 
 const flavorTextInput = document.getElementById('flavorTextInput');
+
+// ---- Post to Discord for Voting ----
+const PENDING_VOTE_KEY = 'rollcall_vote_pending_v1';
+
+function loadPendingVote(){
+  try{ const raw = localStorage.getItem(PENDING_VOTE_KEY); return raw ? JSON.parse(raw) : null; }
+  catch(e){ return null; }
+}
+function savePendingVote(vote){
+  try{ localStorage.setItem(PENDING_VOTE_KEY, JSON.stringify(vote)); }catch(e){ /* ignore */ }
+}
+function clearPendingVote(){
+  try{ localStorage.removeItem(PENDING_VOTE_KEY); }catch(e){ /* ignore */ }
+}
+
+// Reuses the exact fields already computed for each item (displayName, detail,
+// quality, scu) rather than re-deriving any of the dedup rules here — the
+// Worker just displays whatever it's given, blank fields included/excluded.
+function buildVoteItemsPayload(){
+  return itemsArr.map(it => ({
+    name: it.displayName || it.name,
+    info: it.detail ? it.detail.replace(/^\(|\)$/g, '') : null,
+    quality: (it.quality !== undefined && it.quality !== null) ? ('Q' + it.quality) : null,
+    scu: (it.scu !== undefined && it.scu !== null) ? (it.scu + ' SCU') : null,
+    qty: it.qty,
+  }));
+}
+
+const postVoteBtn = document.getElementById('postVoteBtn');
+
+postVoteBtn.addEventListener('click', async () => {
+  const title = rollTitleInput.value.trim();
+  if(!title){ errorEl.textContent = 'Add a title before posting.'; return; }
+  if(itemsArr.length === 0){ errorEl.textContent = 'Add at least one item before posting.'; return; }
+  if(!loadWorkerUrl() || !loadWorkerSecret()){ errorEl.textContent = 'Configure the Discord Vote Worker in settings first.'; return; }
+
+  postVoteBtn.disabled = true;
+  errorEl.textContent = '';
+  try{
+    const res = await workerFetch('/vote', {
+      method: 'POST',
+      body: JSON.stringify({
+        title,
+        when: new Date().toLocaleString(),
+        flavorText: flavorTextInput.value.trim() || undefined,
+        roleId: selectedRoleId || undefined,
+        items: buildVoteItemsPayload(),
+      }),
+    });
+    if(!res.ok){
+      const body = await res.json().catch(() => ({}));
+      errorEl.textContent = 'Failed to post vote: ' + (body.error || ('HTTP ' + res.status));
+      return;
+    }
+    const data = await res.json();
+    savePendingVote({ voteId: data.voteId, title, postedAt: Date.now(), deadline: data.deadline });
+    renderVoteStatus();
+  }catch(e){
+    errorEl.textContent = 'Could not reach the Worker to post the vote.';
+  }finally{
+    postVoteBtn.disabled = false;
+  }
+});
+
+// ---- Pending-vote status, manual finalize override, result fetching ----
+const voteStatusPanel = document.getElementById('voteStatus');
+
+function renderVoteStatus(){
+  const pending = loadPendingVote();
+  if(!pending){ voteStatusPanel.classList.add('hidden'); voteStatusPanel.innerHTML = ''; return; }
+
+  voteStatusPanel.classList.remove('hidden');
+  voteStatusPanel.innerHTML = '';
+
+  const label = document.createElement('span');
+  label.textContent = `Vote posted: "${pending.title}" — `;
+  voteStatusPanel.appendChild(label);
+
+  const checkBtn = document.createElement('button');
+  checkBtn.type = 'button';
+  checkBtn.className = 'ghost-btn';
+  checkBtn.textContent = 'Check Status';
+  checkBtn.addEventListener('click', checkVoteResults);
+  voteStatusPanel.appendChild(checkBtn);
+
+  const finalizeBtn = document.createElement('button');
+  finalizeBtn.type = 'button';
+  finalizeBtn.className = 'ghost-btn danger';
+  finalizeBtn.textContent = 'Start Rolling Now';
+  finalizeBtn.addEventListener('click', async () => {
+    if(!await confirmModal('End voting now and roll with whoever has reacted so far?', 'Start Rolling')) return;
+    await finalizeVoteNow(pending.voteId);
+  });
+  voteStatusPanel.appendChild(finalizeBtn);
+}
+
+async function checkVoteResults(){
+  const pending = loadPendingVote();
+  if(!pending) return;
+  try{
+    const res = await workerFetch('/vote/' + pending.voteId);
+    if(!res.ok) return;
+    const record = await res.json();
+    if(record.status === 'ready') await consumeVoteResults(record);
+  }catch(e){ /* leave pending, user can retry */ }
+}
+
+async function finalizeVoteNow(voteId){
+  try{
+    const res = await workerFetch('/vote/' + voteId + '/finalize', { method: 'POST' });
+    if(!res.ok) return;
+    const record = await res.json();
+    if(record.status === 'ready') await consumeVoteResults(record);
+  }catch(e){ /* leave pending, user can retry */ }
+}
+
+// On load, resume showing a pending vote's status if one exists from a previous session.
+renderVoteStatus();
+if(loadPendingVote()) checkVoteResults();
 
 // Trims a field value to fit Discord's 1024-char embed field limit
 function trimForEmbed(text){
