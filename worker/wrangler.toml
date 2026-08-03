@@ -1,0 +1,13 @@
+name = "lootops-vote-worker"
+main = "src/index.js"
+compatibility_date = "2024-11-01"
+
+kv_namespaces = [
+  { binding = "VOTES_KV", id = "3c76d0d6a69b4ec286158ed453b7b181" }
+]
+
+[triggers]
+crons = ["0 * * * *"]
+
+[vars]
+DISCORD_CHANNEL_ID = "1533862779407175812"
