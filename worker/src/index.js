@@ -16,6 +16,62 @@ function isAuthorized(request, env){
   return provided.length > 0 && provided === env.SHARED_AUTH_SECRET;
 }
 
+function base64urlEncode(bytes){
+  let binary = '';
+  for(const b of bytes) binary += String.fromCharCode(b);
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function base64urlDecode(str){
+  const padded = str.replace(/-/g, '+').replace(/_/g, '/').padEnd(str.length + (4 - str.length % 4) % 4, '=');
+  const binary = atob(padded);
+  const bytes = new Uint8Array(binary.length);
+  for(let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+async function hmacKey(secret){
+  return crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign', 'verify']
+  );
+}
+async function hmacSign(secret, data){
+  const key = await hmacKey(secret);
+  const sigBuf = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(data));
+  return base64urlEncode(new Uint8Array(sigBuf));
+}
+async function hmacVerify(secret, data, signatureB64){
+  const key = await hmacKey(secret);
+  let sigBytes;
+  try{ sigBytes = base64urlDecode(signatureB64); }catch(e){ return false; }
+  return crypto.subtle.verify('HMAC', key, sigBytes, new TextEncoder().encode(data));
+}
+
+// Generic signed-token helpers, used for both the short-lived OAuth `state`
+// param and the longer-lived officer session token. Signature verification
+// only proves the payload wasn't tampered with — callers must separately
+// check any `exp` field themselves, since state-tokens and session-tokens
+// use different freshness windows.
+async function signToken(secret, payload){
+  const payloadB64 = base64urlEncode(new TextEncoder().encode(JSON.stringify(payload)));
+  const sig = await hmacSign(secret, payloadB64);
+  return `${payloadB64}.${sig}`;
+}
+async function verifyToken(secret, token){
+  if(typeof token !== 'string' || !token.includes('.')) return null;
+  const [payloadB64, sig] = token.split('.');
+  const ok = await hmacVerify(secret, payloadB64, sig);
+  if(!ok) return null;
+  try{
+    return JSON.parse(new TextDecoder().decode(base64urlDecode(payloadB64)));
+  }catch(e){
+    return null;
+  }
+}
+
 const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 const KEYCAP_DIGITS = '0123456789';
 
