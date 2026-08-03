@@ -413,7 +413,7 @@ git push
 - Consumes: vote records written by Task 3's `postVote`.
 - Produces: `finalizeVote(env, voteId)` — reused by Task 5's cron handler.
 
-- [ ] **Step 1: Add the reaction-fetching + results-computation helper**
+- [x] **Step 1: Add the reaction-fetching + results-computation helper**
 
 ```js
 async function fetchReactionUsers(env, messageId, emoji){
@@ -456,7 +456,7 @@ async function finalizeVote(env, voteId){
 }
 ```
 
-- [ ] **Step 2: Add the `GET /vote/:id` and `POST /vote/:id/finalize` handlers**
+- [x] **Step 2: Add the `GET /vote/:id` and `POST /vote/:id/finalize` handlers**
 
 ```js
 async function getVote(voteId, env){
@@ -475,7 +475,7 @@ async function finalizeVoteEndpoint(voteId, env){
 }
 ```
 
-- [ ] **Step 3: Wire both routes into the router**
+- [x] **Step 3: Wire both routes into the router**
 
 Replace the routing block from Task 3 Step 4 with:
 ```js
@@ -494,7 +494,7 @@ Replace the routing block from Task 3 Step 4 with:
     return jsonResponse({ error: 'Not found', path: url.pathname }, 404);
 ```
 
-- [ ] **Step 4: Deploy and verify end-to-end with the real test channel**
+- [x] **Step 4: Deploy and verify end-to-end with the real test channel**
 
 ```bash
 cd worker
@@ -516,7 +516,7 @@ Expected: `"status":"ready"`, with `"results"` showing your username under item 
 
 Run the same `GET /vote/<voteId>` call again — expected: still `"status":"ready"` with the same results (confirms idempotency, no re-fetch from Discord on an already-finalized vote).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 cd ..
@@ -535,7 +535,7 @@ git push
 **Interfaces:**
 - Consumes: `finalizeVote(env, voteId)` from Task 4.
 
-- [ ] **Step 1: Implement the `scheduled` handler**
+- [x] **Step 1: Implement the `scheduled` handler**
 
 Replace the placeholder `scheduled` function from Task 2 Step 7 with:
 ```js
@@ -553,7 +553,7 @@ Replace the placeholder `scheduled` function from Task 2 Step 7 with:
   },
 ```
 
-- [ ] **Step 2: Deploy**
+- [x] **Step 2: Deploy**
 
 ```bash
 cd worker
@@ -561,7 +561,7 @@ npx wrangler deploy
 ```
 Expected: deploy output confirms the cron trigger `0 * * * *` is registered.
 
-- [ ] **Step 3: Verify the cron logic manually (without waiting an hour)**
+- [x] **Step 3: Verify the cron logic manually (without waiting an hour)**
 
 Wrangler can invoke the scheduled handler directly against the deployed Worker for testing:
 ```bash
@@ -577,7 +577,7 @@ curl -s -X POST https://lootops-vote-worker.<your-subdomain>.workers.dev/vote \
 ```
 (`0.0007` days ≈ 1 minute.) React to it in Discord within that minute, then wait just over an hour for the next scheduled run (or trigger `finalize` manually via Task 4's endpoint to confirm the logic itself, treating the cron sweep as "the same finalize logic, just triggered on a timer" — the timer mechanism itself is Cloudflare's own scheduling, not something this app's logic needs to re-verify beyond confirming the trigger is registered in Step 2).
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 cd ..
@@ -590,12 +590,12 @@ git push
 
 ## Verification Checklist
 
-- [ ] `wrangler.toml` has a valid `VOTES_KV` binding and `DISCORD_CHANNEL_ID` var.
-- [ ] `DISCORD_BOT_TOKEN` and `SHARED_AUTH_SECRET` are set as Worker secrets (never committed to git).
-- [ ] `POST /vote` posts to the real Discord test channel with correctly-assigned letter/number emoji and the bot self-reacts immediately.
-- [ ] Item lists over 20 entries split into multiple messages, continuing the same emoji sequence.
-- [ ] `GET /vote/:id` returns `pending` before the deadline/manual finalize, `ready` with correct per-item voter lists after.
-- [ ] `POST /vote/:id/finalize` is idempotent — calling it twice doesn't re-fetch or change already-`ready` results.
-- [ ] A Discord fetch failure during finalize leaves the vote `pending` rather than writing bad/partial results.
-- [ ] The Cron Trigger `0 * * * *` is registered on deploy (confirmed via `wrangler deploy` output).
-- [ ] Requests without the correct `X-LootOps-Auth` header are rejected with `401`.
+- [x] `wrangler.toml` has a valid `VOTES_KV` binding and `DISCORD_CHANNEL_ID` var.
+- [x] `DISCORD_BOT_TOKEN` and `SHARED_AUTH_SECRET` are set as Worker secrets (never committed to git).
+- [x] `POST /vote` posts to the real Discord test channel with correctly-assigned letter/number emoji and the bot self-reacts immediately.
+- [x] Item lists over 20 entries split into multiple messages, continuing the same emoji sequence.
+- [x] `GET /vote/:id` returns `pending` before the deadline/manual finalize, `ready` with correct per-item voter lists after.
+- [x] `POST /vote/:id/finalize` is idempotent — calling it twice doesn't re-fetch or change already-`ready` results.
+- [x] A Discord fetch failure during finalize leaves the vote `pending` rather than writing bad/partial results.
+- [x] The Cron Trigger `0 * * * *` is registered on deploy (confirmed via `wrangler deploy` output).
+- [x] Requests without the correct `X-LootOps-Auth` header are rejected with `401`.
