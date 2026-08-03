@@ -325,7 +325,7 @@ function formatBatchContent(batch, meta, batchIndex, totalBatches){
   const titleLine = `**${title || 'LootOps Vote'}**` + (when ? ` — ${when}` : '');
   lines.push(totalBatches > 1 ? `${titleLine} (part ${batchIndex + 1}/${totalBatches})` : titleLine);
   if(flavorText && batchIndex === 0){
-    lines.push(`_${flavorText}_`);
+    lines.push(flavorText);
   }
   lines.push('React to claim interest:');
   lines.push(...batch.map(formatItemLine));
