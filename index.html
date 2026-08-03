@@ -113,12 +113,20 @@ const APP_VERSION = 'v0.8.2';
   .title-row{margin-top:12px;}
   .title-row label{display:block; font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); margin-bottom:5px;}
   #rollTitle{
-    max-width:calc(50% - 7px);
     font-family:'Space Grotesk', sans-serif;
     font-weight:700;
     font-size:15px;
   }
-  @media (max-width:680px){ #rollTitle{max-width:100%;} }
+
+  .title-row-compact{display:flex; gap:12px; align-items:flex-start;}
+  .title-row-compact .field{display:flex; flex-direction:column; min-width:0;}
+  .field-title{flex:2.4 1 0;}
+  .field-duration{flex:1 1 0; min-width:132px;}
+  .field-role{flex:1.4 1 0; min-width:160px;}
+  @media (max-width:680px){
+    .title-row-compact{flex-direction:column;}
+    .field-title, .field-duration, .field-role{flex:1 1 auto; min-width:0; width:100%;}
+  }
 
   .grid{display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:14px;}
   @media (max-width:680px){ .grid{grid-template-columns:1fr;} }
@@ -1503,29 +1511,31 @@ const APP_VERSION = 'v0.8.2';
       </div>
     </div>
     <p>Add items, post to Discord for voting, then roll once results are in. The bot posts the vote and the results — no manual roster entry.</p>
-    <div class="title-row">
-      <label for="rollTitle">Title</label>
-      <input type="text" class="entry-input" id="rollTitle" placeholder='e.g. "TSG Alpha loot"' autocomplete="off">
-    </div>
-    <div class="title-row">
-      <label for="voteDurationSelect">Voting duration</label>
-      <select class="entry-input" id="voteDurationSelect">
-        <option value="1">1 hour</option>
-        <option value="3">3 hours</option>
-        <option value="6">6 hours</option>
-        <option value="12">12 hours</option>
-        <option value="24">1 day</option>
-        <option value="48">2 days</option>
-        <option value="72" selected>3 days</option>
-        <option value="120">5 days</option>
-        <option value="168">7 days</option>
-      </select>
-    </div>
-    <div class="title-row">
-      <label for="roleSearch">Ping role (optional)</label>
-      <div style="position:relative;">
-        <input type="text" class="entry-input" id="roleSearch" placeholder="Type a role name…" autocomplete="off">
-        <div class="wiki-suggestions" id="roleSuggestions"></div>
+    <div class="title-row title-row-compact">
+      <div class="field field-title">
+        <label for="rollTitle">Title</label>
+        <input type="text" class="entry-input" id="rollTitle" placeholder='e.g. "TSG Alpha loot"' autocomplete="off">
+      </div>
+      <div class="field field-duration">
+        <label for="voteDurationSelect">Voting duration</label>
+        <select class="entry-input" id="voteDurationSelect">
+          <option value="1">1 hour</option>
+          <option value="3">3 hours</option>
+          <option value="6">6 hours</option>
+          <option value="12">12 hours</option>
+          <option value="24">1 day</option>
+          <option value="48">2 days</option>
+          <option value="72" selected>3 days</option>
+          <option value="120">5 days</option>
+          <option value="168">7 days</option>
+        </select>
+      </div>
+      <div class="field field-role">
+        <label for="roleSearch">Ping role (optional)</label>
+        <div style="position:relative;">
+          <input type="text" class="entry-input" id="roleSearch" placeholder="Type a role name…" autocomplete="off">
+          <div class="wiki-suggestions" id="roleSuggestions"></div>
+        </div>
       </div>
     </div>
     <div class="title-row">
