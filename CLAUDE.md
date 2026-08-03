@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Relationship to LootOps
+
+This repo (`LootOps-Vote`) started as a full copy of `D4ngrs/LootOps` and is being extended with a Discord vote-to-roll feature (see `docs/superpowers/specs/2026-08-03-discord-vote-roll-design.md` in the original LootOps repo for the design). The original `LootOps` repo is intentionally left untouched and continues to serve as a manual-entry-only tool. Changes here should not be back-ported to `LootOps` unless explicitly requested.
+
 ## What this is
 
 LootOps is a single-file, no-build static web app: **`index.html`** (~2,700 lines) contains all HTML, CSS, and JavaScript inline. There is no package.json, no bundler, no test suite, and no server-side code — the whole app ships as one file that can be opened directly in a browser or hosted as static content.
