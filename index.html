@@ -1521,6 +1521,20 @@ const APP_VERSION = 'v0.8.2';
         <button type="button" class="ghost-btn danger" id="clearHistoryWebhookBtn">Clear</button>
       </div>
       <div class="modal-status" id="historyWebhookStatus"></div>
+
+      <hr class="modal-divider">
+
+      <div class="modal-title">Discord Vote Worker</div>
+      <label class="modal-label" for="workerUrlInput">Worker URL</label>
+      <input type="text" class="entry-input" id="workerUrlInput" placeholder="https://lootops-vote-worker.your-subdomain.workers.dev" autocomplete="off">
+      <label class="modal-label" for="workerSecretInput" style="margin-top:10px;">Shared Secret</label>
+      <input type="password" class="entry-input" id="workerSecretInput" placeholder="Shared secret from wrangler secret put" autocomplete="off">
+      <div class="modal-hint">Connects to the Cloudflare Worker that posts item lists to Discord for voting and reads back results. Both values come from the Worker's own setup.</div>
+      <div class="modal-actions">
+        <button type="button" class="primary-btn" id="saveWorkerConfigBtn">Save</button>
+        <button type="button" class="ghost-btn danger" id="clearWorkerConfigBtn">Clear</button>
+      </div>
+      <div class="modal-status" id="workerConfigStatus"></div>
     </div>
   </div>
 
@@ -3370,6 +3384,8 @@ function setWebhookStatus(msg, kind){
 function openSettings(){
   webhookUrlInput.value = loadWebhookUrl();
   historyWebhookUrlInput.value = loadHistoryWebhookUrl();
+  workerUrlInput.value = loadWorkerUrl();
+  workerSecretInput.value = loadWorkerSecret();
   const hasUrl = !!loadWebhookUrl();
   let msg = hasUrl ? 'Webhook is saved on this device.' : 'No webhook saved yet.';
   if(hasUrl && !discordEnabled.checked) msg += ' Posting is currently turned off via the "Post to Discord" checkbox on the main page.';
@@ -3530,6 +3546,66 @@ testHistoryWebhookBtn.addEventListener('click', async () => {
     setHistoryWebhookStatus('Could not reach Discord. Check the URL and your connection.', 'err');
   }
   testHistoryWebhookBtn.disabled = false;
+});
+
+// ---- Discord Vote Worker connection ----
+const WORKER_URL_KEY = 'rollcall_vote_worker_url_v1';
+const WORKER_SECRET_KEY = 'rollcall_vote_worker_secret_v1';
+
+function loadWorkerUrl(){
+  try{ return (localStorage.getItem(WORKER_URL_KEY) || '').replace(/\/+$/, ''); }
+  catch(e){ return ''; }
+}
+function saveWorkerUrl(url){
+  try{ localStorage.setItem(WORKER_URL_KEY, url.replace(/\/+$/, '')); }catch(e){ /* ignore */ }
+}
+function loadWorkerSecret(){
+  try{ return localStorage.getItem(WORKER_SECRET_KEY) || ''; }
+  catch(e){ return ''; }
+}
+function saveWorkerSecret(secret){
+  try{ localStorage.setItem(WORKER_SECRET_KEY, secret); }catch(e){ /* ignore */ }
+}
+
+async function workerFetch(path, options = {}){
+  const base = loadWorkerUrl();
+  if(!base) throw new Error('No Worker URL configured');
+  return fetch(base + path, {
+    ...options,
+    headers: {
+      'X-LootOps-Auth': loadWorkerSecret(),
+      'Content-Type': 'application/json',
+      ...(options.headers || {}),
+    },
+  });
+}
+
+const workerUrlInput = document.getElementById('workerUrlInput');
+const workerSecretInput = document.getElementById('workerSecretInput');
+const saveWorkerConfigBtn = document.getElementById('saveWorkerConfigBtn');
+const clearWorkerConfigBtn = document.getElementById('clearWorkerConfigBtn');
+const workerConfigStatusEl = document.getElementById('workerConfigStatus');
+
+function setWorkerConfigStatus(msg, kind){
+  workerConfigStatusEl.textContent = msg;
+  workerConfigStatusEl.className = 'modal-status' + (kind ? ' ' + kind : '');
+}
+
+saveWorkerConfigBtn.addEventListener('click', () => {
+  const url = workerUrlInput.value.trim();
+  const secret = workerSecretInput.value.trim();
+  if(!url || !secret){ setWorkerConfigStatus('Enter both the Worker URL and shared secret.', 'err'); return; }
+  saveWorkerUrl(url);
+  saveWorkerSecret(secret);
+  setWorkerConfigStatus('Saved.', 'ok');
+});
+
+clearWorkerConfigBtn.addEventListener('click', async () => {
+  if(!await confirmModal('Remove the saved Worker URL and shared secret?', 'Remove')) return;
+  try{ localStorage.removeItem(WORKER_URL_KEY); localStorage.removeItem(WORKER_SECRET_KEY); }catch(e){ /* ignore */ }
+  workerUrlInput.value = '';
+  workerSecretInput.value = '';
+  setWorkerConfigStatus('Removed.');
 });
 
 // Trims a field value to fit Discord's 1024-char embed field limit
