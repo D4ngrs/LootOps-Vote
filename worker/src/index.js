@@ -311,6 +311,15 @@ export default {
   },
 
   async scheduled(event, env, ctx){
-    // Cron sweep implemented in a later task
+    const list = await env.VOTES_KV.list({ prefix: 'vote:' });
+    const now = Date.now();
+    for(const key of list.keys){
+      const raw = await env.VOTES_KV.get(key.name);
+      if(!raw) continue;
+      const record = JSON.parse(raw);
+      if(record.status === 'pending' && now >= record.deadline){
+        ctx.waitUntil(finalizeVote(env, record.id));
+      }
+    }
   },
 };
