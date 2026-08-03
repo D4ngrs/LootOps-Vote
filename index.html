@@ -3577,7 +3577,8 @@ async function checkVoteResults(){
   try{
     const res = await workerFetch('/vote/' + pending.voteId);
     if(!res.ok){
-      setVoteStatusMsg('Could not check status (HTTP ' + res.status + ').', 'err');
+      const body = await res.json().catch(() => ({}));
+      setVoteStatusMsg('Could not check status: ' + (body.detail || body.error || ('HTTP ' + res.status)), 'err');
       return;
     }
     const record = await res.json();
@@ -3596,7 +3597,8 @@ async function finalizeVoteNow(voteId){
   try{
     const res = await workerFetch('/vote/' + voteId + '/finalize', { method: 'POST' });
     if(!res.ok){
-      setVoteStatusMsg('Could not start rolling (HTTP ' + res.status + ').', 'err');
+      const body = await res.json().catch(() => ({}));
+      setVoteStatusMsg('Could not start rolling: ' + (body.detail || body.error || ('HTTP ' + res.status)), 'err');
       return;
     }
     const record = await res.json();
@@ -3615,7 +3617,8 @@ async function abortVoteNow(voteId){
   try{
     const res = await workerFetch('/vote/' + voteId + '/abort', { method: 'POST' });
     if(!res.ok){
-      setVoteStatusMsg('Could not cancel the vote (HTTP ' + res.status + ').', 'err');
+      const body = await res.json().catch(() => ({}));
+      setVoteStatusMsg('Could not cancel the vote: ' + (body.detail || body.error || ('HTTP ' + res.status)), 'err');
       return;
     }
     clearPendingVote();

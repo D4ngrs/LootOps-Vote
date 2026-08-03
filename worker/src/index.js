@@ -383,16 +383,34 @@ async function postVote(request, env){
   return jsonResponse({ voteId, messageIds, emojiMap, deadline: record.deadline });
 }
 
+// Fetching reactions for every item in sequence can trip Discord's rate limit
+// the same way rapid-fire reaction *adds* do (see addReaction) — retry on 429
+// using the Retry-After Discord gives us, instead of failing the whole roll.
 async function fetchReactionUsers(env, messageId, emoji){
-  const res = await discordFetch(
-    env,
-    `/channels/${env.DISCORD_CHANNEL_ID}/messages/${messageId}/reactions/${encodeURIComponent(emoji)}?limit=100`,
-    { method: 'GET' }
-  );
-  if(!res.ok) throw new Error(`Discord reaction fetch failed: HTTP ${res.status}`);
-  const users = await res.json();
-  // Exclude the bot's own self-reaction from the voter list.
-  return users.filter(u => !u.bot).map(u => u.username);
+  const MAX_ATTEMPTS = 5;
+  for(let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++){
+    const res = await discordFetch(
+      env,
+      `/channels/${env.DISCORD_CHANNEL_ID}/messages/${messageId}/reactions/${encodeURIComponent(emoji)}?limit=100`,
+      { method: 'GET' }
+    );
+    if(res.ok){
+      const users = await res.json();
+      // Exclude the bot's own self-reaction from the voter list.
+      return users.filter(u => !u.bot).map(u => u.username);
+    }
+    if(res.status === 429 && attempt < MAX_ATTEMPTS){
+      let retryAfterMs = 1000;
+      try{
+        const data = await res.json();
+        if(typeof data.retry_after === 'number') retryAfterMs = Math.ceil(data.retry_after * 1000) + 50;
+      }catch(e){ /* fall back to default backoff */ }
+      await sleep(retryAfterMs);
+      continue;
+    }
+    throw new Error(`Discord reaction fetch failed: HTTP ${res.status} (message ${messageId}, emoji ${emoji})`);
+  }
+  throw new Error(`Discord reaction fetch failed: exhausted retries after repeated HTTP 429 (message ${messageId}, emoji ${emoji})`);
 }
 
 async function finalizeVote(env, voteId){
