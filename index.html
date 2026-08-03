@@ -867,6 +867,7 @@ const APP_VERSION = 'v0.8.2';
   .modal-status{font-size:12px; margin-top:12px; min-height:1.2em;}
   .modal-status.ok{color:var(--gold);}
   .modal-status.err{color:var(--bad);}
+  .modal-divider{border:none;border-top:1px solid var(--panel);margin:16px 0;}
 
   /* Small popup used in place of the browser's native confirm() — deliberately a lot
      smaller than the regular .modal-panel (which is sized for real content like the
@@ -1507,6 +1508,19 @@ const APP_VERSION = 'v0.8.2';
         <button type="button" class="ghost-btn danger" id="clearWebhookBtn">Clear</button>
       </div>
       <div class="modal-status" id="webhookStatus"></div>
+
+      <hr class="modal-divider">
+
+      <div class="modal-title">History Log Webhook</div>
+      <label class="modal-label" for="historyWebhookUrlInput">Webhook URL</label>
+      <input type="text" class="entry-input" id="historyWebhookUrlInput" placeholder="https://discord.com/api/webhooks/…" autocomplete="off">
+      <div class="modal-hint">Optional second channel. When enabled, every roll also posts the same result summary here as an internal log — useful as a fallback reference if members have questions later.</div>
+      <div class="modal-actions">
+        <button type="button" class="primary-btn" id="saveHistoryWebhookBtn">Save</button>
+        <button type="button" class="ghost-btn" id="testHistoryWebhookBtn">Send test</button>
+        <button type="button" class="ghost-btn danger" id="clearHistoryWebhookBtn">Clear</button>
+      </div>
+      <div class="modal-status" id="historyWebhookStatus"></div>
     </div>
   </div>
 
@@ -1648,6 +1662,11 @@ const APP_VERSION = 'v0.8.2';
     <div class="discord-row">
       <label><input type="checkbox" id="discordEnabled"> Post to Discord</label>
       <span class="discord-warning" id="discordWarning"></span>
+    </div>
+    <div class="sep"></div>
+    <div class="discord-row">
+      <label><input type="checkbox" id="historyWebhookEnabled"> Log to history channel</label>
+      <span class="discord-warning" id="historyWebhookWarning"></span>
     </div>
   </div>
 
@@ -3350,6 +3369,7 @@ function setWebhookStatus(msg, kind){
 
 function openSettings(){
   webhookUrlInput.value = loadWebhookUrl();
+  historyWebhookUrlInput.value = loadHistoryWebhookUrl();
   const hasUrl = !!loadWebhookUrl();
   let msg = hasUrl ? 'Webhook is saved on this device.' : 'No webhook saved yet.';
   if(hasUrl && !discordEnabled.checked) msg += ' Posting is currently turned off via the "Post to Discord" checkbox on the main page.';
@@ -3419,13 +3439,106 @@ testWebhookBtn.addEventListener('click', async () => {
   testWebhookBtn.disabled = false;
 });
 
+// ---- History log webhook (separate channel, independent toggle) ----
+const HISTORY_WEBHOOK_KEY = 'rollcall_vote_history_webhook_v1';
+const HISTORY_WEBHOOK_ENABLED_KEY = 'rollcall_vote_history_webhook_enabled_v1';
+
+function loadHistoryWebhookEnabled(){
+  try{
+    const raw = localStorage.getItem(HISTORY_WEBHOOK_ENABLED_KEY);
+    return raw === null ? false : raw === 'true'; // default off
+  }catch(e){ return false; }
+}
+function saveHistoryWebhookEnabled(enabled){
+  try{ localStorage.setItem(HISTORY_WEBHOOK_ENABLED_KEY, String(enabled)); }catch(e){ /* ignore */ }
+}
+const historyWebhookEnabled = document.getElementById('historyWebhookEnabled');
+historyWebhookEnabled.checked = loadHistoryWebhookEnabled();
+historyWebhookEnabled.addEventListener('change', () => saveHistoryWebhookEnabled(historyWebhookEnabled.checked));
+
+const historyWebhookWarningEl = document.getElementById('historyWebhookWarning');
+function refreshHistoryWebhookWarning(){
+  historyWebhookWarningEl.textContent = loadHistoryWebhookUrl() ? '' : '(no webhook set)';
+}
+refreshHistoryWebhookWarning();
+
+const historyWebhookUrlInput = document.getElementById('historyWebhookUrlInput');
+const saveHistoryWebhookBtn = document.getElementById('saveHistoryWebhookBtn');
+const testHistoryWebhookBtn = document.getElementById('testHistoryWebhookBtn');
+const clearHistoryWebhookBtn = document.getElementById('clearHistoryWebhookBtn');
+const historyWebhookStatusEl = document.getElementById('historyWebhookStatus');
+
+function loadHistoryWebhookUrl(){
+  try{ return localStorage.getItem(HISTORY_WEBHOOK_KEY) || ''; }
+  catch(e){ return ''; }
+}
+function saveHistoryWebhookUrl(url){
+  try{ localStorage.setItem(HISTORY_WEBHOOK_KEY, url); }catch(e){ /* storage unavailable, ignore */ }
+}
+function clearHistoryWebhookUrl(){
+  try{ localStorage.removeItem(HISTORY_WEBHOOK_KEY); }catch(e){ /* ignore */ }
+}
+
+function setHistoryWebhookStatus(msg, kind){
+  historyWebhookStatusEl.textContent = msg;
+  historyWebhookStatusEl.className = 'modal-status' + (kind ? ' ' + kind : '');
+}
+
+saveHistoryWebhookBtn.addEventListener('click', () => {
+  const url = historyWebhookUrlInput.value.trim();
+  if(!url){ setHistoryWebhookStatus('Enter a webhook URL first.', 'err'); return; }
+  if(!/^https:\/\/(discord\.com|discordapp\.com)\/api\/webhooks\//.test(url)){
+    setHistoryWebhookStatus('That doesn\'t look like a Discord webhook URL.', 'err');
+    return;
+  }
+  saveHistoryWebhookUrl(url);
+  setHistoryWebhookStatus('Saved. Rolls will now also log to this webhook when enabled.', 'ok');
+  refreshHistoryWebhookWarning();
+});
+
+clearHistoryWebhookBtn.addEventListener('click', async () => {
+  if(!await confirmModal('Remove the saved history log webhook?', 'Remove')) return;
+  clearHistoryWebhookUrl();
+  historyWebhookUrlInput.value = '';
+  setHistoryWebhookStatus('Webhook removed.');
+  refreshHistoryWebhookWarning();
+});
+
+testHistoryWebhookBtn.addEventListener('click', async () => {
+  const url = historyWebhookUrlInput.value.trim();
+  if(!url){ setHistoryWebhookStatus('Enter a webhook URL first.', 'err'); return; }
+  testHistoryWebhookBtn.disabled = true;
+  setHistoryWebhookStatus('Sending test message…');
+  try{
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        embeds: [{
+          title: 'LootOps - History log test message',
+          description: 'If you can see this, your history log webhook is set up correctly.',
+          color: EMBED_COLOR
+        }]
+      })
+    });
+    if(res.ok || res.status === 204){
+      setHistoryWebhookStatus('Test message sent — check Discord.', 'ok');
+    } else {
+      setHistoryWebhookStatus('Discord returned an error (HTTP ' + res.status + ').', 'err');
+    }
+  }catch(e){
+    setHistoryWebhookStatus('Could not reach Discord. Check the URL and your connection.', 'err');
+  }
+  testHistoryWebhookBtn.disabled = false;
+});
+
 // Trims a field value to fit Discord's 1024-char embed field limit
 function trimForEmbed(text){
   if(text.length <= 1024) return text;
   return text.slice(0, 1000) + '\n…(truncated)';
 }
 
-async function postRollToDiscord(url, data){
+function buildRollEmbeds(data){
   const { title, when, names, buckets, leftover, itemsSnapshot, spreadEven, capOne } = data;
 
   const participantsText = trimForEmbed(names.map(escDiscord).join(', ') || '—');
@@ -3464,11 +3577,16 @@ async function postRollToDiscord(url, data){
     fields: resultsFields
   };
 
+  return [mainEmbed, resultsEmbed];
+}
+
+async function postRollToDiscord(url, data){
+  const embeds = buildRollEmbeds(data);
   try{
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ embeds: [mainEmbed, resultsEmbed] })
+      body: JSON.stringify({ embeds })
     });
     if(res.ok || res.status === 204){
       discordStatusEl.textContent = '✓ Posted to Discord.';
@@ -3481,6 +3599,20 @@ async function postRollToDiscord(url, data){
     discordStatusEl.textContent = 'Could not reach Discord to post the roll.';
     discordStatusEl.className = 'err';
   }
+}
+
+async function postRollToHistoryLog(url, data){
+  const embeds = buildRollEmbeds(data);
+  try{
+    await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ embeds })
+    });
+    // Silent on success/failure — this is a best-effort internal log, not user-facing
+    // feedback. The primary webhook's status line already tells the roller whether
+    // the main post succeeded; a failed history log never blocks or affects the roll.
+  }catch(e){ /* best-effort log, ignore */ }
 }
 
 async function postUndoToDiscord(url, entry, reason){
@@ -3538,6 +3670,8 @@ rollBtn.addEventListener('click', () => {
     const itemsSnapshot = snapshotItemsForRoll();
     const webhookUrl = loadWebhookUrl();
     const willPostToDiscord = !!(webhookUrl && discordEnabled.checked);
+    const historyWebhookUrl = loadHistoryWebhookUrl();
+    const willLogToHistory = !!(historyWebhookUrl && historyWebhookEnabled.checked);
     render(names, buckets, leftover, title, itemsSnapshot);
     logRoll(names, buckets, leftover, title, when, itemsSnapshot, willPostToDiscord);
     rollBtn.disabled = false;
@@ -3552,6 +3686,13 @@ rollBtn.addEventListener('click', () => {
 
     if(willPostToDiscord){
       postRollToDiscord(webhookUrl, {
+        title, when, names, buckets, leftover,
+        itemsSnapshot: itemsArr.map(it => ({ label: it.label || it.name, qty: it.qty })),
+        spreadEven: evenSpread.checked, capOne: oneEach.checked
+      });
+    }
+    if(willLogToHistory){
+      postRollToHistoryLog(historyWebhookUrl, {
         title, when, names, buckets, leftover,
         itemsSnapshot: itemsArr.map(it => ({ label: it.label || it.name, qty: it.qty })),
         spreadEven: evenSpread.checked, capOne: oneEach.checked
