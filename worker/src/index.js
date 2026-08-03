@@ -314,18 +314,28 @@ function formatItemLine(it){
   return it.emoji + '  |  ' + formatItemSummary(it);
 }
 
+// Discord renders <t:SECONDS:STYLE> client-side in each viewer's own local
+// timezone/locale — no timezone math needed on our end, and :R> ("in 3 days")
+// stays live/ticking on its own without any polling or backend involvement.
+function discordTimestamp(msEpoch, style){
+  return `<t:${Math.floor(msEpoch / 1000)}:${style}>`;
+}
+
 function formatBatchContent(batch, meta, batchIndex, totalBatches){
-  const { title, when, flavorText, roleId } = meta;
+  const { title, postedAt, deadline, flavorText, roleId } = meta;
   const lines = [];
   if(roleId && batchIndex === 0){
     // Spoilered so the raw mention text is hidden until clicked, but the
     // role still receives a real ping/notification.
     lines.push(`||<@&${roleId}>||`);
   }
-  const titleLine = `**${title || 'LootOps Vote'}**` + (when ? ` — ${when}` : '');
+  const titleLine = `**${title || 'LootOps Vote'}**` + (postedAt ? ` — ${discordTimestamp(postedAt, 'F')}` : '');
   lines.push(totalBatches > 1 ? `${titleLine} (part ${batchIndex + 1}/${totalBatches})` : titleLine);
   if(flavorText && batchIndex === 0){
     lines.push(flavorText);
+  }
+  if(deadline && batchIndex === 0){
+    lines.push(`⏳ Voting closes ${discordTimestamp(deadline, 'R')} (${discordTimestamp(deadline, 'F')})`);
   }
   lines.push('React to claim interest:');
   lines.push(...batch.map(formatItemLine));
@@ -337,15 +347,22 @@ async function postVote(request, env){
   try{ body = await request.json(); }
   catch(e){ return jsonResponse({ error: 'Invalid JSON body' }, 400); }
 
-  const { items, title, deadlineHours, roleId, when, flavorText } = body;
+  const { items, title, deadlineHours, roleId, flavorText } = body;
   if(!Array.isArray(items) || items.length === 0){
     return jsonResponse({ error: 'items must be a non-empty array' }, 400);
   }
 
+  // Computed once up front (not per-request-received-then-again-later) so the
+  // "posted at" timestamp shown to Discord viewers and the one stored in KV
+  // for the deadline sweep are exactly the same instant.
+  const postedAt = Date.now();
+  const hours = Number.isFinite(deadlineHours) && deadlineHours > 0 ? deadlineHours : 72; // default 3 days
+  const deadline = postedAt + hours * 60 * 60 * 1000;
+
   const batches = buildMessageBatches(items);
   const messageIds = [];
   const emojiMap = [];
-  const meta = { title, when, flavorText, roleId };
+  const meta = { title, postedAt, deadline, flavorText, roleId };
 
   try{
     for(let b = 0; b < batches.length; b++){
@@ -365,7 +382,6 @@ async function postVote(request, env){
   }
 
   const voteId = crypto.randomUUID();
-  const hours = Number.isFinite(deadlineHours) && deadlineHours > 0 ? deadlineHours : 72; // default 3 days
   const record = {
     id: voteId,
     items,
@@ -373,8 +389,8 @@ async function postVote(request, env){
     channelId: env.DISCORD_CHANNEL_ID,
     messageIds,
     emojiMap,
-    createdAt: Date.now(),
-    deadline: Date.now() + hours * 60 * 60 * 1000,
+    createdAt: postedAt,
+    deadline,
     status: 'pending',
     results: null,
   };
@@ -473,7 +489,7 @@ async function announceResults(voteId, request, env){
   let body;
   try{ body = await request.json(); }
   catch(e){ return jsonResponse({ error: 'Invalid JSON body' }, 400); }
-  const { names, buckets, leftover, when, spreadEven, capOne, historyWebhookUrl } = body;
+  const { names, buckets, leftover, spreadEven, capOne, historyWebhookUrl } = body;
   if(!Array.isArray(names) || !Array.isArray(buckets)){
     return jsonResponse({ error: 'names and buckets are required arrays' }, 400);
   }
@@ -510,7 +526,7 @@ async function announceResults(voteId, request, env){
     title: record.title || 'Untitled Roll',
     color: 0xE8A33D, // matches --gold, same convention as the frontend's main embed
     fields: [
-      { name: 'Date & Time', value: when || new Date().toISOString(), inline: false },
+      { name: 'Date & Time', value: discordTimestamp(record.finalizedAt || Date.now(), 'F'), inline: false },
       { name: 'Participants', value: participantsText, inline: false },
       { name: 'Roll Mode', value: `Spread evenly: ${spreadEven ? 'Yes' : 'No'}\nCap at 1 item: ${capOne ? 'Yes' : 'No'}`, inline: false },
       { name: 'Loot Pool', value: lootPoolText, inline: false },

@@ -3674,7 +3674,6 @@ postVoteBtn.addEventListener('click', async () => {
       method: 'POST',
       body: JSON.stringify({
         title,
-        when: new Date().toLocaleString(),
         flavorText: flavorTextInput.value.trim() || undefined,
         roleId: selectedRoleId || undefined,
         deadlineHours: Number(voteDurationSelect.value) || undefined,
@@ -3933,7 +3932,7 @@ async function consumeVoteResults(record){
       method: 'POST',
       body: JSON.stringify({
         names: allNames, buckets, leftover: unwanted.map(it => it.name),
-        when, spreadEven: evenSpread.checked, capOne: oneEach.checked,
+        spreadEven: evenSpread.checked, capOne: oneEach.checked,
         historyWebhookUrl,
       }),
     });
