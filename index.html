@@ -156,6 +156,22 @@ const APP_VERSION = 'v0.8.2';
     outline:none;
   }
   .entry-input:focus{border-color:var(--violet);}
+  .flavor-textarea{
+    display:block;
+    width:60%;
+    min-width:220px;
+    max-width:100%;
+    height:64px;
+    resize:horizontal;
+    overflow-y:auto;
+    line-height:1.5;
+    scrollbar-width:thin;
+    scrollbar-color:var(--muted) transparent;
+  }
+  .flavor-textarea::-webkit-scrollbar{width:6px;}
+  .flavor-textarea::-webkit-scrollbar-track{background:transparent;}
+  .flavor-textarea::-webkit-scrollbar-thumb{background:var(--muted); border-radius:3px;}
+  .flavor-textarea::-webkit-scrollbar-thumb:hover{background:var(--text);}
   #nameEntry::placeholder{font-size:11.5px;}
   .name-warning{color:var(--bad); font-size:11px; margin-top:2px; min-height:13px;}
   .hint-mobile-only{display:none;}
@@ -1455,7 +1471,7 @@ const APP_VERSION = 'v0.8.2';
     </div>
     <div class="title-row">
       <label for="flavorTextInput">Flavor text (optional)</label>
-      <input type="text" class="entry-input" id="flavorTextInput" placeholder='e.g. "React within 3 days to claim your share!"' autocomplete="off">
+      <textarea class="entry-input flavor-textarea" id="flavorTextInput" placeholder='e.g. "React within 3 days to claim your share!"' rows="2"></textarea>
     </div>
   </header>
 
