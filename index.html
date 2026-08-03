@@ -158,11 +158,11 @@ const APP_VERSION = 'v0.8.2';
   .entry-input:focus{border-color:var(--violet);}
   .flavor-textarea{
     display:block;
-    width:60%;
-    min-width:220px;
-    max-width:100%;
+    width:100%;
     height:64px;
-    resize:horizontal;
+    min-height:64px;
+    max-height:280px;
+    resize:vertical;
     overflow-y:auto;
     line-height:1.5;
     scrollbar-width:thin;
@@ -172,6 +172,20 @@ const APP_VERSION = 'v0.8.2';
   .flavor-textarea::-webkit-scrollbar-track{background:transparent;}
   .flavor-textarea::-webkit-scrollbar-thumb{background:var(--muted); border-radius:3px;}
   .flavor-textarea::-webkit-scrollbar-thumb:hover{background:var(--text);}
+  /* Recolor the native resize grip to match the app's muted/dark palette instead
+     of the browser's default white-on-gray triangle. Firefox doesn't support
+     styling this pseudo-element, so it keeps its native grip there. */
+  .flavor-textarea::-webkit-resizer{
+    background-color:var(--panel-2);
+    background-image:repeating-linear-gradient(
+      135deg,
+      var(--muted) 0px, var(--muted) 1.5px,
+      transparent 1.5px, transparent 4px
+    );
+    background-size:9px 9px;
+    background-position:bottom right;
+    background-repeat:no-repeat;
+  }
   #nameEntry::placeholder{font-size:11.5px;}
   .name-warning{color:var(--bad); font-size:11px; margin-top:2px; min-height:13px;}
   .hint-mobile-only{display:none;}
