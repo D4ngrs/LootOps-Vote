@@ -1982,7 +1982,7 @@ const RAVENHALL_LOGO_SRC = (function(){
 // hosting layer instead (e.g. Cloudflare Access).
 (function(){
   const PASSWORD_HASH = '85cd65f0445f5f4e5a8f5948d5b2a610488f50dd491226b597b6c097e3797df2'; // SHA-256 hash — the actual password is never stored in this file
-  const AUTH_KEY = 'lootops_auth_v1';
+  const AUTH_KEY = 'lootops_vote_auth_v1';
   const SESSION_MS = 10 * 24 * 60 * 60 * 1000; // 10 days
 
   const loginGate = document.getElementById('loginGate');
@@ -3010,7 +3010,7 @@ shareCopyBtn.addEventListener('click', async () => {
   }
 });
 
-const HISTORY_KEY = 'rollcall_history_v1';
+const HISTORY_KEY = 'rollcall_vote_history_v1';
 
 function loadHistory(){
   try{
@@ -3023,7 +3023,7 @@ function saveHistory(entries){
   try{ localStorage.setItem(HISTORY_KEY, JSON.stringify(entries)); }catch(e){ /* storage unavailable, ignore */ }
 }
 
-const LAST_UNDONE_KEY = 'rollcall_last_undone_v1';
+const LAST_UNDONE_KEY = 'rollcall_vote_last_undone_v1';
 
 function loadLastRollUndone(){
   try{ return localStorage.getItem(LAST_UNDONE_KEY) === 'true'; }
@@ -3299,8 +3299,8 @@ document.addEventListener('keydown', e => {
 });
 
 // ---- Discord webhook ----
-const WEBHOOK_KEY = 'rollcall_webhook_v1';
-const WEBHOOK_ENABLED_KEY = 'rollcall_webhook_enabled_v1';
+const WEBHOOK_KEY = 'rollcall_vote_webhook_v1';
+const WEBHOOK_ENABLED_KEY = 'rollcall_vote_webhook_enabled_v1';
 const EMBED_COLOR = 0xE8A33D; // matches --gold, used for the main setup embed
 const EMBED_COLOR_RESULTS = 0x7C6FF0; // matches --violet, used for the results embed
 const EMBED_COLOR_UNDO = 0xE8636A; // matches --bad, used for the undo-notice embed
