@@ -2787,6 +2787,111 @@ function buildShareCardHtml(result){
   `;
 }
 
+// Builds a full standalone HTML document (not a DOM fragment) for the "Loot Sheet" —
+// a spacious, one-column, dark-themed page meant to be read on screen or saved as PDF
+// while distributing loot, as opposed to the Share card's compact shareable-image
+// layout. Opened in its own browser tab (see the lootSheetBtn handler), so it carries
+// its own inline <style> rather than relying on the parent page's stylesheet.
+function buildLootSheetHtml(result){
+  const itemByName = new Map(result.itemsSnapshot.map(it => [it.name, it]));
+
+  function itemLine(itemName, qty){
+    const def = itemByName.get(itemName) || {};
+    const bits = ['<span class="ls-qty">' + qty + '×</span>'];
+    bits.push(escapeHtml(def.displayName || itemName));
+    if(def.quality) bits.push('<span class="ls-qual">Q' + def.quality + '</span>');
+    if(def.scu) bits.push('<span class="ls-scu">' + def.scu + ' SCU</span>');
+    let html = '<div class="ls-item-line">' + bits.join(' ') + '</div>';
+    if(def.detail) html += '<div class="ls-item-detail">' + escapeHtml(def.detail.replace(/^\(|\)$/g, '')) + '</div>';
+    return html;
+  }
+
+  const personBlocks = [];
+  const noLootNames = [];
+  result.names.forEach((name, i) => {
+    const grouped = groupWonItems(result.buckets[i]);
+    if(grouped.length === 0){ noLootNames.push(name); return; }
+    const itemsHtml = grouped.map(g => itemLine(g.name, g.qty)).join('');
+    personBlocks.push(
+      '<section class="ls-person">' +
+        '<h2>' + escapeHtml(name) + '</h2>' +
+        '<div class="ls-items">' + itemsHtml + '</div>' +
+      '</section>'
+    );
+  });
+
+  const noLootHtml = noLootNames.length
+    ? '<p class="ls-no-loot">No loot: ' + noLootNames.map(escapeHtml).join(', ') + '</p>'
+    : '';
+
+  const leftover = result.leftover || [];
+  const leftoverHtml = leftover.length
+    ? '<section class="ls-leftover"><h2>Unclaimed Items</h2><div class="ls-items">' +
+        leftover.map(it => '<div class="ls-item-line"><span class="ls-qty">' + it.qty + '×</span>' + escapeHtml(it.name) + '</div>').join('') +
+      '</div></section>'
+    : '';
+
+  return `<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>${escapeHtml(result.title || 'Loot Sheet')} — Loot Sheet</title>
+<style>
+  :root{
+    --bg:#14151A; --panel:#1D1F26; --panel-2:#23252E; --line:#31333F;
+    --gold:#E8A33D; --violet:#7C6FF0; --text:#EDEDED; --muted:#8A8F98;
+  }
+  *{box-sizing:border-box;}
+  html, body{
+    background:var(--bg); color:var(--text);
+    font-family:'IBM Plex Mono', 'Consolas', monospace;
+    margin:0; padding:40px 24px 80px;
+    -webkit-print-color-adjust:exact; print-color-adjust:exact;
+  }
+  .ls-wrap{max-width:760px; margin:0 auto;}
+  header{margin-bottom:32px;}
+  header h1{
+    font-family:'Space Grotesk', sans-serif; font-size:28px; margin:0 0 6px;
+  }
+  header .ls-when{color:var(--muted); font-size:13px;}
+  .ls-person{
+    background:var(--panel); border:1px solid var(--line); border-radius:12px;
+    padding:20px 24px; margin-bottom:18px;
+  }
+  .ls-person h2{
+    font-family:'Space Grotesk', sans-serif; font-size:20px; margin:0 0 14px;
+    color:var(--gold);
+  }
+  .ls-items{display:flex; flex-direction:column; gap:12px;}
+  .ls-item-line{font-size:16px; line-height:1.4;}
+  .ls-qty{color:var(--gold); font-weight:700; margin-right:6px;}
+  .ls-qual{color:var(--violet); margin-left:8px;}
+  .ls-scu{color:var(--muted); margin-left:8px;}
+  .ls-item-detail{color:var(--muted); font-size:12.5px; margin-top:2px;}
+  .ls-no-loot{color:var(--muted); font-size:14px; margin:24px 0;}
+  .ls-leftover{
+    background:var(--panel-2); border:1px dashed var(--line); border-radius:12px;
+    padding:20px 24px; margin-top:24px;
+  }
+  .ls-leftover h2{
+    font-family:'Space Grotesk', sans-serif; font-size:16px; margin:0 0 12px; color:var(--muted);
+  }
+</style>
+</head>
+<body>
+  <div class="ls-wrap">
+    <header>
+      <h1>${escapeHtml(result.title || 'Loot Sheet')}</h1>
+      <div class="ls-when">${escapeHtml(result.when || '')}</div>
+    </header>
+    ${personBlocks.join('')}
+    ${noLootHtml}
+    ${leftoverHtml}
+  </div>
+</body>
+</html>`;
+}
+
 // Measures the real rendered height of the two share-card columns and spreads the
 // difference evenly across every row of the shorter column as extra bottom padding —
 // so the whole column grows a touch taller together instead of one row visibly
