@@ -220,6 +220,60 @@ async function postVote(request, env){
   return jsonResponse({ voteId, messageIds, emojiMap, deadline: record.deadline });
 }
 
+async function fetchReactionUsers(env, messageId, emoji){
+  const res = await discordFetch(
+    env,
+    `/channels/${env.DISCORD_CHANNEL_ID}/messages/${messageId}/reactions/${encodeURIComponent(emoji)}?limit=100`,
+    { method: 'GET' }
+  );
+  if(!res.ok) throw new Error(`Discord reaction fetch failed: HTTP ${res.status}`);
+  const users = await res.json();
+  // Exclude the bot's own self-reaction from the voter list.
+  return users.filter(u => !u.bot).map(u => u.username);
+}
+
+async function finalizeVote(env, voteId){
+  const raw = await env.VOTES_KV.get(`vote:${voteId}`);
+  if(!raw) return { ok: false, error: 'not_found' };
+
+  const record = JSON.parse(raw);
+  if(record.status === 'ready') return { ok: true, record }; // idempotent
+
+  let results;
+  try{
+    results = {};
+    for(const entry of record.emojiMap){
+      const voters = await fetchReactionUsers(env, entry.messageId, entry.emoji);
+      results[entry.itemIndex] = voters;
+    }
+  }catch(e){
+    // Leave status as "pending" on any failure — the cron sweep or another
+    // manual finalize call will retry later, per the spec's retry-safety rules.
+    return { ok: false, error: String(e) };
+  }
+
+  record.status = 'ready';
+  record.results = results;
+  record.finalizedAt = Date.now();
+  await env.VOTES_KV.put(`vote:${voteId}`, JSON.stringify(record));
+  return { ok: true, record };
+}
+
+async function getVote(voteId, env){
+  const raw = await env.VOTES_KV.get(`vote:${voteId}`);
+  if(!raw) return jsonResponse({ error: 'Vote not found' }, 404);
+  return jsonResponse(JSON.parse(raw));
+}
+
+async function finalizeVoteEndpoint(voteId, env){
+  const result = await finalizeVote(env, voteId);
+  if(!result.ok){
+    if(result.error === 'not_found') return jsonResponse({ error: 'Vote not found' }, 404);
+    return jsonResponse({ error: 'Finalize failed, still pending', detail: result.error }, 502);
+  }
+  return jsonResponse(result.record);
+}
+
 export default {
   async fetch(request, env, ctx){
     if(request.method === 'OPTIONS'){
@@ -243,6 +297,14 @@ export default {
       }catch(e){
         return jsonResponse({ error: 'Failed to fetch roles', detail: String(e) }, 502);
       }
+    }
+
+    const voteMatch = url.pathname.match(/^\/vote\/([^/]+)(\/finalize)?$/);
+    if(voteMatch && request.method === 'GET' && !voteMatch[2]){
+      return getVote(voteMatch[1], env);
+    }
+    if(voteMatch && request.method === 'POST' && voteMatch[2]){
+      return finalizeVoteEndpoint(voteMatch[1], env);
     }
 
     return jsonResponse({ error: 'Not found', path: url.pathname }, 404);
