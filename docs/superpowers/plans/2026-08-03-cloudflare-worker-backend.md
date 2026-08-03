@@ -23,7 +23,7 @@
 
 **These steps must be performed by the user** — they require accounts and credentials no automated tool can create.
 
-- [ ] **Step 1: Create the Discord bot application**
+- [x] **Step 1: Create the Discord bot application**
 
 1. Go to `https://discord.com/developers/applications` and sign in.
 2. Click **New Application**, name it something like `LootOps Vote Bot`, accept the terms.
@@ -31,19 +31,19 @@
 4. Under **Privileged Gateway Intents**, leave everything off — this bot never opens a Gateway connection, so no intents are needed.
 5. Click **Reset Token** (or **Copy**) to get the bot token. **Keep this tab open or copy the token somewhere safe temporarily** — you'll paste it directly into `wrangler secret put` in Task 2's Step 4, never into this chat.
 
-- [ ] **Step 2: Invite the bot to your Discord server**
+- [x] **Step 2: Invite the bot to your Discord server**
 
 1. In the left sidebar, click **OAuth2 → URL Generator**.
 2. Under **Scopes**, check `bot`.
 3. Under **Bot Permissions**, check `Send Messages`, `Add Reactions`, `Read Message History`, `View Channel`.
 4. Copy the generated URL at the bottom, open it in a browser, pick your Discord server, and authorize it (you need "Manage Server" permission on that server).
 
-- [ ] **Step 3: Get the target channel ID**
+- [x] **Step 3: Get the target channel ID**
 
 1. In Discord, enable Developer Mode: **User Settings → Advanced → Developer Mode**.
 2. Right-click the channel you want votes posted to → **Copy Channel ID**. Keep this handy for Task 2 (it's not sensitive, just a numeric ID).
 
-- [ ] **Step 4: Create a free Cloudflare account**
+- [x] **Step 4: Create a free Cloudflare account**
 
 1. Go to `https://dash.cloudflare.com/sign-up` and create a free account (no credit card required for Workers' free tier).
 2. No further dashboard setup needed yet — the rest is done via the `wrangler` CLI in Task 2.
@@ -60,7 +60,7 @@
 **Interfaces:**
 - Produces: a deployable Worker skeleton with CORS handling, shared-secret auth middleware, and a KV binding — used by all later tasks.
 
-- [ ] **Step 1: Install wrangler locally**
+- [x] **Step 1: Install wrangler locally**
 
 Run (from `LootOps-Vote`):
 ```bash
@@ -71,7 +71,7 @@ npm install --save-dev wrangler
 ```
 Expected: `worker/package.json` and `worker/node_modules` exist.
 
-- [ ] **Step 2: Log in to Cloudflare via wrangler**
+- [x] **Step 2: Log in to Cloudflare via wrangler**
 
 **This step must be run by the user**, not through an automated tool — it opens a browser for an interactive OAuth login.
 
@@ -82,7 +82,7 @@ npx wrangler login
 ```
 Expected: a browser window opens, the user authorizes wrangler against their Cloudflare account, and the terminal shows "Successfully logged in."
 
-- [ ] **Step 3: Create the KV namespace**
+- [x] **Step 3: Create the KV namespace**
 
 Run:
 ```bash
@@ -90,7 +90,7 @@ npx wrangler kv namespace create VOTES_KV
 ```
 Expected: output includes a `binding = "VOTES_KV"` / `id = "..."` snippet — copy the `id` value for Step 5.
 
-- [ ] **Step 4: Set the Discord bot token secret**
+- [x] **Step 4: Set the Discord bot token secret**
 
 **This step must be run by the user directly** — the token is a credential that should never be typed into this chat session.
 
@@ -101,7 +101,7 @@ npx wrangler secret put DISCORD_BOT_TOKEN
 ```
 Wrangler will prompt for the value — the user pastes the bot token from Task 1 Step 1 directly into that prompt.
 
-- [ ] **Step 5: Create `worker/wrangler.toml`**
+- [x] **Step 5: Create `worker/wrangler.toml`**
 
 ```toml
 name = "lootops-vote-worker"
@@ -121,7 +121,7 @@ DISCORD_CHANNEL_ID = "PASTE_CHANNEL_ID_HERE"
 
 Replace `PASTE_KV_NAMESPACE_ID_HERE` with the id from Step 3, and `PASTE_CHANNEL_ID_HERE` with the channel ID from Task 1 Step 3.
 
-- [ ] **Step 6: Generate and set the shared auth secret**
+- [x] **Step 6: Generate and set the shared auth secret**
 
 This secret is minted fresh for LootOps-Vote-to-Worker authentication (not a third-party credential), so it can be generated and set directly:
 
@@ -132,7 +132,7 @@ echo "$SHARED_SECRET" | npx wrangler secret put SHARED_AUTH_SECRET
 ```
 Save the printed value somewhere — it'll be needed again in the later frontend-integration stage, entered once into `LootOps-Vote`'s settings.
 
-- [ ] **Step 7: Write the Worker skeleton**
+- [x] **Step 7: Write the Worker skeleton**
 
 `worker/src/index.js`:
 ```js
@@ -175,7 +175,7 @@ export default {
 };
 ```
 
-- [ ] **Step 8: Deploy the skeleton and verify auth works**
+- [x] **Step 8: Deploy the skeleton and verify auth works**
 
 Run:
 ```bash
@@ -203,7 +203,7 @@ Expected: first two return `401`, the third returns `404` (authorized, but no ro
 - Consumes: `env.DISCORD_BOT_TOKEN`, `env.DISCORD_CHANNEL_ID`, `env.VOTES_KV` from Task 2.
 - Produces: `assignEmoji(index)`, `postVote(request, env)` — used by the router in this task; KV records read by Task 4.
 
-- [ ] **Step 1: Add the emoji-assignment helper**
+- [x] **Step 1: Add the emoji-assignment helper**
 
 ```js
 const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
@@ -233,7 +233,7 @@ function assignEmoji(index){
 }
 ```
 
-- [ ] **Step 2: Add Discord REST helpers**
+- [x] **Step 2: Add Discord REST helpers**
 
 ```js
 const DISCORD_API = 'https://discord.com/api/v10';
@@ -269,7 +269,7 @@ async function addReaction(env, messageId, emoji){
 }
 ```
 
-- [ ] **Step 3: Add the batching + message-building logic**
+- [x] **Step 3: Add the batching + message-building logic**
 
 ```js
 const MAX_REACTIONS_PER_MESSAGE = 20;
@@ -294,7 +294,7 @@ function formatBatchContent(batch, title, batchIndex, totalBatches){
 }
 ```
 
-- [ ] **Step 4: Implement `postVote` and wire it into the router**
+- [x] **Step 4: Implement `postVote` and wire it into the router**
 
 ```js
 async function postVote(request, env){
@@ -357,7 +357,7 @@ In the `fetch` handler's routing (replacing the placeholder 404 body), add:
     return jsonResponse({ error: 'Not found', path: url.pathname }, 404);
 ```
 
-- [ ] **Step 5: Deploy and verify against the real test channel**
+- [x] **Step 5: Deploy and verify against the real test channel**
 
 ```bash
 cd worker
@@ -375,7 +375,7 @@ Expected: JSON response with a `voteId`, `messageIds` (one entry), and a 2-item 
 ```
 with the bot's own 🇦 and 🇧 reactions already attached.
 
-- [ ] **Step 6: Verify the 20-item message-split behavior**
+- [x] **Step 6: Verify the 20-item message-split behavior**
 
 ```bash
 curl -s -X POST https://lootops-vote-worker.<your-subdomain>.workers.dev/vote \
@@ -385,7 +385,7 @@ curl -s -X POST https://lootops-vote-worker.<your-subdomain>.workers.dev/vote \
 ```
 Expected: response has `messageIds` with 2 entries; in Discord, message 1 has items 1-20 with emoji 🇦-🇹, message 2 has items 21-22 with emoji 🇺-🇻 (letters continue across the split, not reset).
 
-- [ ] **Step 7: Add `.gitignore` and commit**
+- [x] **Step 7: Add `.gitignore` and commit**
 
 Create `worker/.gitignore`:
 ```
@@ -399,6 +399,8 @@ git add worker/
 git commit -m "feat: add Cloudflare Worker skeleton and POST /vote endpoint"
 git push
 ```
+
+**Added during execution (not in the original plan):** role-ping support (`GET /roles` endpoint, guild ID auto-derived from the channel, spoilered `||<@&roleId>||` mention scoped via `allowed_mentions`), the full item line layout (`Emoji | Item name (info) | Quality | SCU | Quantity` with blank fields omitted), a `when`/`flavorText` header, and Discord `429` rate-limit retry on reaction adds. All verified live against the real test Discord server/channel. See the updated design spec for details. These are reflected directly in `worker/src/index.js`.
 
 ---
 
