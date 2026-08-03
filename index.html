@@ -1628,14 +1628,8 @@ const APP_VERSION = 'v0.8.2';
   <div class="grid">
     <div class="panel names">
       <div class="panel-label">Names <span class="count" id="nameCount">0</span></div>
-      <div class="entry-input-row">
-        <input type="text" class="entry-input" id="nameEntry" placeholder="Type a name and press Enter" autocomplete="off">
-        <button type="button" id="nameAddBtn" class="mobile-add-btn">Add</button>
-      </div>
-      <div class="name-warning" id="nameWarning"></div>
       <ul class="entry-list" id="namesList"></ul>
-      <div class="hint hint-desktop-only">Type and press Enter to add.<br>Click × to remove.</div>
-      <div class="hint hint-mobile-only">Type and press Enter or tap Add to add.<br>Tap × to remove.</div>
+      <div class="hint">Populated automatically once vote results come in — no manual entry.</div>
     </div>
     <div class="panel items">
       <div class="panel-label">
@@ -2105,7 +2099,6 @@ const RAVENHALL_LOGO_SRC = (function(){
 })();
 </script>
 <script>
-const nameEntry = document.getElementById('nameEntry');
 const namesListEl = document.getElementById('namesList');
 const itemsListEl = document.getElementById('itemsList');
 const nameCount = document.getElementById('nameCount');
@@ -2238,75 +2231,36 @@ const MAX_ITEM_QTY = 500;
 
 function renderNamesList(){
   namesListEl.innerHTML = '';
-  namesArr.forEach((name, i) => {
+  namesArr.forEach(name => {
     const li = document.createElement('li');
     li.className = 'entry-row-item name-row';
-    
+
     const nameSpan = document.createElement('span');
     nameSpan.className = 'entry-name';
     nameSpan.textContent = name;
     li.appendChild(nameSpan);
-
-    const removeBtn = document.createElement('button');
-    removeBtn.type = 'button';
-    removeBtn.className = 'entry-remove';
-    removeBtn.textContent = '×';
-    removeBtn.title = 'Remove';
-    removeBtn.addEventListener('click', () => {
-      namesArr.splice(i, 1);
-      renderNamesList();
-    });
-    li.appendChild(removeBtn);
 
     namesListEl.appendChild(li);
   });
   nameCount.textContent = namesArr.length;
 }
 
-const nameWarningEl = document.getElementById('nameWarning');
-
-function addName(raw){
-  const name = raw.trim();
-  if(!name) return;
-  const isDuplicate = namesArr.some(n => n.toLowerCase() === name.toLowerCase());
-  if(isDuplicate){
-    nameWarningEl.textContent = `"${name}" is already in the list.`;
-    return;
-  }
-  nameWarningEl.textContent = '';
-  namesArr.push(name);
+// Replaces namesArr wholesale from vote results — the Names panel is read-only
+// and vote-driven only, there is no manual entry.
+function setNamesFromVotes(names){
+  namesArr = names.slice();
   renderNamesList();
 }
 
-nameEntry.addEventListener('input', () => { nameWarningEl.textContent = ''; });
-
-function commitNameEntry(){
-  addName(nameEntry.value);
-  nameEntry.value = '';
-}
-
-// Mobile gets an explicit Add button (tapping Enter on a phone keyboard isn't
-// always obvious/available), so the placeholder text should match that on mobile.
-const NAME_PLACEHOLDER_DESKTOP = 'Type a name and press Enter';
-const NAME_PLACEHOLDER_MOBILE = 'Type name and tap "Add"';
 const ITEM_PLACEHOLDER_DESKTOP = 'Search items...';
 const ITEM_PLACEHOLDER_MOBILE = 'Search items...';
 const mobileLayoutQuery = window.matchMedia('(max-width:600px)');
 function applyResponsivePlaceholders(){
   const isMobile = mobileLayoutQuery.matches;
-  document.getElementById('nameEntry').placeholder = isMobile ? NAME_PLACEHOLDER_MOBILE : NAME_PLACEHOLDER_DESKTOP;
   document.getElementById('wikiSearch').placeholder = isMobile ? ITEM_PLACEHOLDER_MOBILE : ITEM_PLACEHOLDER_DESKTOP;
 }
 applyResponsivePlaceholders();
 mobileLayoutQuery.addEventListener('change', applyResponsivePlaceholders);
-
-nameEntry.addEventListener('keydown', e => {
-  if(e.key === 'Enter'){
-    e.preventDefault();
-    commitNameEntry();
-  }
-});
-document.getElementById('nameAddBtn').addEventListener('click', commitNameEntry);
 
 resetBtn.addEventListener('click', async () => {
   if(!await confirmModal('Reset names, items, and the roll title? This clears the current setup (your saved Discord webhook and roll history are kept).', 'Reset')) return;
@@ -2317,7 +2271,6 @@ resetBtn.addEventListener('click', async () => {
   resultsTitleEl.textContent = '';
   errorEl.textContent = '';
   discordStatusEl.textContent = '';
-  nameWarningEl.textContent = '';
   lastRollResult = null;
   shareBtn.disabled = true;
   shareBtn.classList.remove('ready');
