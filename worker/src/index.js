@@ -138,17 +138,22 @@ function buildMessageBatches(items){
   return batches;
 }
 
-// Layout: Emoji | Item name (info, italic) | Quality | SCU size | Quantity
-// Quality/SCU/info are supplied by the frontend (already deduped there, e.g.
-// via buildDetailLabel) and are only included in the line when present —
-// never shown as empty/placeholder segments.
-function formatItemLine(it){
+// Item name (info, italic) | Quality | SCU size | Quantity — the shared part
+// of the item layout, reused both for the voting message (with an emoji
+// prefixed) and the Loot Pool line in the results announcement (no emoji,
+// voting is already over by then). Quality/SCU/info are supplied by the
+// frontend (already deduped there, e.g. via buildDetailLabel) and are only
+// included when present — never shown as empty/placeholder segments.
+function formatItemSummary(it){
   const namePart = `**${it.name}**` + (it.info ? ` _(${it.info})_` : '');
-  const segments = [it.emoji, namePart];
+  const segments = [namePart];
   if(it.quality) segments.push(it.quality);
   if(it.scu) segments.push(it.scu);
   segments.push(`x${it.qty}`);
   return segments.join('  |  ');
+}
+function formatItemLine(it){
+  return it.emoji + '  |  ' + formatItemSummary(it);
 }
 
 function formatBatchContent(batch, meta, batchIndex, totalBatches){
@@ -259,6 +264,104 @@ async function finalizeVote(env, voteId){
   return { ok: true, record };
 }
 
+// Discord uses simple markdown — escape characters that would otherwise format unexpectedly
+function escDiscord(s){
+  return String(s).replace(/([*_~`|>])/g, '\\$1');
+}
+
+// Trims a field value to fit Discord's 1024-char embed field limit
+function trimForEmbed(text){
+  if(text.length <= 1024) return text;
+  return text.slice(0, 1000) + '\n…(truncated)';
+}
+
+async function postDiscordEmbeds(env, embeds){
+  const res = await discordFetch(env, `/channels/${env.DISCORD_CHANNEL_ID}/messages`, {
+    method: 'POST',
+    body: JSON.stringify({ embeds, allowed_mentions: { parse: [] } }),
+  });
+  if(!res.ok) throw new Error(`Discord embed post failed: HTTP ${res.status}`);
+  return res.json();
+}
+
+// Posts the final roll outcome (who won what) into the same channel the vote
+// was posted in, authored by the bot itself — no separate webhook needed for
+// this, since the bot already has authorization there. Idempotent: once
+// announced, repeat calls are a no-op rather than posting duplicates.
+async function announceResults(voteId, request, env){
+  const raw = await env.VOTES_KV.get(`vote:${voteId}`);
+  if(!raw) return jsonResponse({ error: 'Vote not found' }, 404);
+  const record = JSON.parse(raw);
+  if(record.announced) return jsonResponse({ announced: true }); // idempotent
+
+  let body;
+  try{ body = await request.json(); }
+  catch(e){ return jsonResponse({ error: 'Invalid JSON body' }, 400); }
+  const { names, buckets, leftover, when, spreadEven, capOne } = body;
+  if(!Array.isArray(names) || !Array.isArray(buckets)){
+    return jsonResponse({ error: 'names and buckets are required arrays' }, 400);
+  }
+
+  // Mirrors the frontend's buildRollEmbeds() two-embed format, just authored
+  // by the bot instead of posted via a webhook — and, unlike that version,
+  // enriches per-person results with the same quality/SCU/info fields the
+  // Loot Pool line already shows, rather than bare item names.
+  const itemMetaByName = new Map(record.items.map(it => [it.name, it]));
+  function formatWonGroup(itemName, wonQty){
+    const meta = itemMetaByName.get(itemName) || {};
+    return formatItemSummary({ name: itemName, info: meta.info, quality: meta.quality, scu: meta.scu, qty: wonQty });
+  }
+  function groupWonItems(bucket){
+    const counts = new Map();
+    bucket.forEach(n => counts.set(n, (counts.get(n) || 0) + 1));
+    return Array.from(counts.entries());
+  }
+
+  const participantsText = trimForEmbed(names.map(escDiscord).join(', ') || '—');
+  const lootPoolText = trimForEmbed(
+    record.items.map(formatItemSummary).join('\n') || '—'
+  );
+  const resultsText = names.length
+    ? names.map((name, i) => {
+        const got = buckets[i] || [];
+        if(!got.length) return `**${escDiscord(name)}:**\n_nothing_`;
+        const itemLines = groupWonItems(got).map(([itemName, qty]) => formatWonGroup(itemName, qty)).join('\n');
+        return `**${escDiscord(name)}:**\n${itemLines}`;
+      }).join('\n\n')
+    : '_No one reacted to any item._';
+
+  const mainEmbed = {
+    title: record.title || 'Untitled Roll',
+    color: 0xE8A33D, // matches --gold, same convention as the frontend's main embed
+    fields: [
+      { name: 'Date & Time', value: when || new Date().toISOString(), inline: false },
+      { name: 'Participants', value: participantsText, inline: false },
+      { name: 'Roll Mode', value: `Spread evenly: ${spreadEven ? 'Yes' : 'No'}\nCap at 1 item: ${capOne ? 'Yes' : 'No'}`, inline: false },
+      { name: 'Loot Pool', value: lootPoolText, inline: false },
+    ],
+  };
+
+  const resultsFields = [{ name: 'Results', value: trimForEmbed(resultsText), inline: false }];
+  if(leftover && leftover.length){
+    resultsFields.push({ name: 'Unwanted (no reactions)', value: trimForEmbed(leftover.map(escDiscord).join(', ')), inline: false });
+  }
+  const resultsEmbed = {
+    title: (record.title ? record.title + ' - ' : '') + 'Results',
+    color: 0x7C6FF0, // matches --violet, same convention as the frontend's results embed
+    fields: resultsFields,
+  };
+
+  try{
+    await postDiscordEmbeds(env, [mainEmbed, resultsEmbed]);
+  }catch(e){
+    return jsonResponse({ error: 'Failed to post results', detail: String(e) }, 502);
+  }
+
+  record.announced = true;
+  await env.VOTES_KV.put(`vote:${voteId}`, JSON.stringify(record));
+  return jsonResponse({ announced: true });
+}
+
 async function getVote(voteId, env){
   const raw = await env.VOTES_KV.get(`vote:${voteId}`);
   if(!raw) return jsonResponse({ error: 'Vote not found' }, 404);
@@ -299,12 +402,15 @@ export default {
       }
     }
 
-    const voteMatch = url.pathname.match(/^\/vote\/([^/]+)(\/finalize)?$/);
+    const voteMatch = url.pathname.match(/^\/vote\/([^/]+)(\/finalize|\/announce)?$/);
     if(voteMatch && request.method === 'GET' && !voteMatch[2]){
       return getVote(voteMatch[1], env);
     }
-    if(voteMatch && request.method === 'POST' && voteMatch[2]){
+    if(voteMatch && request.method === 'POST' && voteMatch[2] === '/finalize'){
       return finalizeVoteEndpoint(voteMatch[1], env);
+    }
+    if(voteMatch && request.method === 'POST' && voteMatch[2] === '/announce'){
+      return announceResults(voteMatch[1], request, env);
     }
 
     return jsonResponse({ error: 'Not found', path: url.pathname }, 404);
