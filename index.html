@@ -20,6 +20,7 @@ const APP_VERSION = 'v0.8.2';
     --line:#31333F;
     --gold:#E8A33D;
     --violet:#7C6FF0;
+    --green:#5FB86B;
     --text:#EDEDED;
     --muted:#8A8F98;
     --bad:#E8636A;
@@ -654,6 +655,35 @@ const APP_VERSION = 'v0.8.2';
   }
   #shareBtn.ready:hover{transform:translateY(-1px); box-shadow:0 8px 24px rgba(232,163,61,0.25);}
   #shareBtn.ready:active{transform:translateY(0px);}
+
+  #lootSheetBtn{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    font-family:'Space Grotesk', sans-serif;
+    font-weight:700;
+    font-size:15px;
+    letter-spacing:.05em;
+    text-transform:uppercase;
+    color:#4A4D55;
+    background:#0B0C0F;
+    border:1px solid #1B1C22;
+    border-radius:8px;
+    padding:12px 33.5px;
+    cursor:not-allowed;
+    opacity:.7;
+    box-shadow:0 0 0 rgba(95,184,107,0);
+    transition:transform .12s ease, box-shadow .2s ease, background .2s ease, color .2s ease, border-color .2s ease, opacity .2s ease;
+  }
+  #lootSheetBtn.ready{
+    color:#0F1A10;
+    background:linear-gradient(135deg, var(--green), #8FD696);
+    border-color:transparent;
+    cursor:pointer;
+    opacity:1;
+  }
+  #lootSheetBtn.ready:hover{transform:translateY(-1px); box-shadow:0 8px 24px rgba(95,184,107,0.25);}
+  #lootSheetBtn.ready:active{transform:translateY(0px);}
 
   #error{
     color:var(--bad); text-align:center; font-size:12.5px; margin:4px 0 14px; min-height:16px;
@@ -1510,7 +1540,7 @@ const APP_VERSION = 'v0.8.2';
         <button id="resetBtn" class="ghost-btn danger">↺ Reset</button>
       </div>
     </div>
-    <p>Add items, post to Discord for voting, then roll once results are in. The bot posts the vote and the results — no manual roster entry.</p>
+    <p>Add items, post to Discord for voting, then roll once results are in. The bot posts the vote and the results - no manual roster entry.</p>
     <div class="title-row title-row-compact">
       <div class="field field-title">
         <label for="rollTitle">Title</label>
@@ -1551,7 +1581,7 @@ const APP_VERSION = 'v0.8.2';
         <button type="button" class="modal-close" id="closeSettingsBtn">×</button>
       </div>
       <div class="modal-title">History Log Webhook</div>
-      <div class="modal-hint">Optional second channel — when "Log to history channel" is checked before a roll, results also post there as an internal log. Configured server-side only (the Worker's <code>HISTORY_WEBHOOK_URL</code> secret), never entered here — a webhook URL is itself a credential, so it never touches the browser.</div>
+      <div class="modal-hint">Optional second channel - when "Log to history channel" is checked before a roll, results also post there as an internal log. Configured server-side only (the Worker's <code>HISTORY_WEBHOOK_URL</code> secret), never entered here - a webhook URL is itself a credential, so it never touches the browser.</div>
       <div class="modal-status" id="historyWebhookStatus"></div>
 
       <hr class="modal-divider">
@@ -1639,7 +1669,7 @@ const APP_VERSION = 'v0.8.2';
     <div class="panel names">
       <div class="panel-label">Names <span class="count" id="nameCount">0</span></div>
       <ul class="entry-list" id="namesList"></ul>
-      <div class="hint">Populated automatically once vote results come in — no manual entry.</div>
+      <div class="hint">Populated automatically once vote results come in - no manual entry.</div>
     </div>
     <div class="panel items">
       <div class="panel-label">
@@ -1699,7 +1729,7 @@ const APP_VERSION = 'v0.8.2';
       </svg>
       <span class="btn-label">Share</span>
     </button>
-    <button id="lootSheetBtn" type="button" class="ghost-btn" disabled aria-label="Open loot sheet">
+    <button id="lootSheetBtn" type="button" disabled aria-label="Open loot sheet">
       <span class="btn-label">📋 Loot Sheet</span>
     </button>
   </div>
@@ -2229,6 +2259,7 @@ function resetRollState(){
   shareBtn.disabled = true;
   shareBtn.classList.remove('ready');
   lootSheetBtn.disabled = true;
+  lootSheetBtn.classList.remove('ready');
   renderNamesList();
   renderItemsList();
 }
@@ -2660,7 +2691,7 @@ function render(names, buckets, leftover, title, itemsSnapshot){
     const grouped = groupWonItems(buckets[i]);
     const list = grouped.length
       ? '<ul>' + grouped.map(g => `<li>${formatWonItemHtml(g.name, g.qty, itemByName)}</li>`).join('') + '</ul>'
-      : '<div class="none">— nothing rolled —</div>';
+      : '<div class="none">- nothing rolled -</div>';
     card.innerHTML = `<div class="name">${escapeHtml(name)} <span class="idx">#${i+1}</span></div>${list}`;
     results.appendChild(card);
   });
@@ -2832,7 +2863,7 @@ function buildLootSheetHtml(result){
 <html>
 <head>
 <meta charset="utf-8">
-<title>${escapeHtml(result.title || 'Loot Sheet')} — Loot Sheet</title>
+<title>${escapeHtml(result.title || 'Loot Sheet')} - Loot Sheet</title>
 <style>
   :root{
     --bg:#14151A; --panel:#1D1F26; --panel-2:#23252E; --line:#31333F;
@@ -3066,7 +3097,7 @@ shareCopyBtn.addEventListener('click', async () => {
     await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
     setShareStatus('Copied to clipboard.', 'ok');
   }catch(e){
-    setShareStatus('Could not copy — try Download instead.', 'err');
+    setShareStatus('Could not copy - try Download instead.', 'err');
   }
 });
 
@@ -3398,7 +3429,7 @@ async function refreshHistoryWebhookConfigStatus(){
   historyWebhookWarningEl.textContent = historyWebhookConfigured ? '' : '(no webhook configured on the Worker)';
   historyWebhookStatusEl.textContent = historyWebhookConfigured
     ? 'Configured.'
-    : 'Not set — ask whoever manages the Worker to run `wrangler secret put HISTORY_WEBHOOK_URL`.';
+    : 'Not set - ask whoever manages the Worker to run `wrangler secret put HISTORY_WEBHOOK_URL`.';
   historyWebhookStatusEl.className = 'modal-status' + (historyWebhookConfigured ? ' ok' : '');
 }
 refreshHistoryWebhookConfigStatus();
@@ -3710,7 +3741,7 @@ function renderVoteStatus(){
   abortBtn.className = 'ghost-btn danger';
   abortBtn.textContent = 'Abort';
   abortBtn.addEventListener('click', async () => {
-    if(!await confirmModal('Cancel this vote? The posted Discord message stays up, but it will never be rolled — you\'ll be free to edit items and post a new vote.', 'Abort Vote')) return;
+    if(!await confirmModal('Cancel this vote? The posted Discord message stays up, but it will never be rolled - you\'ll be free to edit items and post a new vote.', 'Abort Vote')) return;
     await abortVoteNow(pending.voteId);
   });
   actions.appendChild(abortBtn);
@@ -3770,7 +3801,7 @@ async function finalizeVoteNow(voteId){
     if(record.status === 'ready'){
       await consumeVoteResults(record);
     }else{
-      setVoteStatusMsg('Roll did not complete — try again.', 'err');
+      setVoteStatusMsg('Roll did not complete - try again.', 'err');
     }
   }catch(e){
     setVoteStatusMsg('Could not reach the Worker to start rolling.', 'err');
@@ -3882,6 +3913,7 @@ async function consumeVoteResults(record){
   shareBtn.disabled = false;
   shareBtn.classList.add('ready');
   lootSheetBtn.disabled = false;
+  lootSheetBtn.classList.add('ready');
 
   // Results are announced by the bot itself, into the same channel the vote was
   // posted in — no separately-configured webhook needed for that, since the bot
@@ -4174,7 +4206,7 @@ async function loadAllCategoriesInBackground(){
   }
   refreshWikiStatusForCurrentCategory();
   if(failed === cats.length){
-    wikiStatus.textContent = 'Could not reach api.star-citizen.wiki (offline, or the page was opened as a local file — try running it through a local server, or add items manually).';
+    wikiStatus.textContent = 'Could not reach api.star-citizen.wiki (offline, or the page was opened as a local file - try running it through a local server, or add items manually).';
     wikiStatus.classList.add('err');
   }
 }
@@ -4246,7 +4278,7 @@ function renderWikiSuggestions(){
     const nameHtml = idx === -1
       ? escapeHtml(name)
       : escapeHtml(name.slice(0, idx)) + '<b>' + escapeHtml(name.slice(idx, idx + query.length)) + '</b>' + escapeHtml(name.slice(idx + query.length));
-    const badge = qty > 0 ? ` <span class="qty-badge">— in list ×${qty}, click to add another</span>` : '';
+    const badge = qty > 0 ? ` <span class="qty-badge">- in list ×${qty}, click to add another</span>` : '';
     btn.innerHTML = nameHtml + badge;
     btn.addEventListener('mouseenter', () => setActiveSuggestion(currentSuggestionBtns.indexOf(btn)));
     btn.addEventListener('click', () => selectSuggestion(item));
@@ -4840,7 +4872,7 @@ document.getElementById('copyYear').textContent = new Date().getFullYear();
     }
     note.innerHTML = 'Saved ' + appliedCount + ' change(s); ' +
       '<button type="button" id="dmSkipLink">' + skipped.length + ' skipped</button>' +
-      ' (not found in file — likely a dynamically-generated element that can only be previewed, not saved).';
+      ' (not found in file - likely a dynamically-generated element that can only be previewed, not saved).';
     list.innerHTML = skipped.map(function(entry, i){
       return '<li><span>' + escapeHtml(describeSkippedEntry(entry)) + '</span><button type="button" data-skip-idx="' + i + '">Locate</button></li>';
     }).join('');

@@ -322,20 +322,26 @@ function discordTimestamp(msEpoch, style){
 }
 
 function formatBatchContent(batch, meta, batchIndex, totalBatches){
-  const { title, postedAt, deadline, flavorText, roleId } = meta;
+  const { title, postedAt, deadline, closed, flavorText, roleId } = meta;
   const lines = [];
   if(roleId && batchIndex === 0){
     // Spoilered so the raw mention text is hidden until clicked, but the
-    // role still receives a real ping/notification.
+    // role still receives a real ping/notification. Editing a message later
+    // (see editVoteMessagesToClosed) doesn't re-trigger this notification —
+    // Discord only pings on the original send, not on edits.
     lines.push(`||<@&${roleId}>||`);
   }
-  const titleLine = `**${title || 'LootOps Vote'}**` + (postedAt ? ` — ${discordTimestamp(postedAt, 'F')}` : '');
+  const titleLine = `**${title || 'LootOps Vote'}**` + (postedAt ? ` - ${discordTimestamp(postedAt, 'F')}` : '');
   lines.push(totalBatches > 1 ? `${titleLine} (part ${batchIndex + 1}/${totalBatches})` : titleLine);
+  if(batchIndex === 0){
+    if(closed){
+      lines.push('Voting closed.');
+    }else if(deadline){
+      lines.push(`Voting closes ${discordTimestamp(deadline, 'R')} (${discordTimestamp(deadline, 'F')})`);
+    }
+  }
   if(flavorText && batchIndex === 0){
     lines.push(flavorText);
-  }
-  if(deadline && batchIndex === 0){
-    lines.push(`⏳ Voting closes ${discordTimestamp(deadline, 'R')} (${discordTimestamp(deadline, 'F')})`);
   }
   lines.push('React to claim interest:');
   lines.push(...batch.map(formatItemLine));
@@ -386,6 +392,10 @@ async function postVote(request, env){
     id: voteId,
     items,
     title: title || '',
+    // Stored so the vote message(s) can be reconstructed and edited later
+    // (see editVoteMessagesToClosed) — not just used at initial post time.
+    roleId: roleId || null,
+    flavorText: flavorText || null,
     channelId: env.DISCORD_CHANNEL_ID,
     messageIds,
     emojiMap,
@@ -429,6 +439,33 @@ async function fetchReactionUsers(env, messageId, emoji){
   throw new Error(`Discord reaction fetch failed: exhausted retries after repeated HTTP 429 (message ${messageId}, emoji ${emoji})`);
 }
 
+// Edits each of the vote's original message(s) to swap the "Voting closes..."
+// line for "Voting closed." — reconstructs the same content formatBatchContent
+// built at post time (grouping record.emojiMap back into per-message batches
+// by the order they were originally recorded in), so nothing but that one
+// line actually changes. Best-effort: called right after a vote is finalized
+// (manually or via the cron sweep), but a failure here shouldn't undo or
+// block the finalize itself — the results are already committed by then.
+async function editVoteMessagesToClosed(env, record){
+  const batchesByMessage = new Map();
+  record.emojiMap.forEach(entry => {
+    if(!batchesByMessage.has(entry.messageId)) batchesByMessage.set(entry.messageId, []);
+    batchesByMessage.get(entry.messageId).push({ ...record.items[entry.itemIndex], emoji: entry.emoji, index: entry.itemIndex });
+  });
+  const meta = { title: record.title, postedAt: record.createdAt, closed: true, flavorText: record.flavorText, roleId: record.roleId };
+  for(let b = 0; b < record.messageIds.length; b++){
+    const messageId = record.messageIds[b];
+    const batch = batchesByMessage.get(messageId) || [];
+    const content = formatBatchContent(batch, meta, b, record.messageIds.length);
+    try{
+      await discordFetch(env, `/channels/${env.DISCORD_CHANNEL_ID}/messages/${messageId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ content }),
+      });
+    }catch(e){ /* best-effort — a failed edit doesn't affect the already-finalized vote */ }
+  }
+}
+
 async function finalizeVote(env, voteId){
   const raw = await env.VOTES_KV.get(`vote:${voteId}`);
   if(!raw) return { ok: false, error: 'not_found' };
@@ -453,6 +490,7 @@ async function finalizeVote(env, voteId){
   record.results = results;
   record.finalizedAt = Date.now();
   await env.VOTES_KV.put(`vote:${voteId}`, JSON.stringify(record));
+  await editVoteMessagesToClosed(env, record);
   return { ok: true, record };
 }
 
@@ -509,9 +547,9 @@ async function announceResults(voteId, request, env){
     return Array.from(counts.entries());
   }
 
-  const participantsText = trimForEmbed(names.map(escDiscord).join(', ') || '—');
+  const participantsText = trimForEmbed(names.map(escDiscord).join(', ') || '-');
   const lootPoolText = trimForEmbed(
-    record.items.map(formatItemSummary).join('\n') || '—'
+    record.items.map(formatItemSummary).join('\n') || '-'
   );
   const resultsText = names.length
     ? names.map((name, i) => {
