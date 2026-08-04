@@ -997,6 +997,34 @@ const APP_VERSION = 'v0.8.2';
   .primary-btn:disabled{opacity:.6; cursor:default;}
 
   .history-modal-panel{max-width:560px;}
+
+  .flavor-preset-actions{display:flex; gap:8px; margin-top:8px;}
+  .presets-modal-panel{max-width:480px;}
+  .presets-modal-panel.editing{max-width:560px;}
+  .preset-list{
+    list-style:none; margin:0; padding:0;
+    display:flex; flex-direction:column; gap:6px;
+    max-height:50vh; overflow-y:auto;
+  }
+  .preset-row{
+    display:flex; align-items:center; justify-content:space-between; gap:8px;
+    background:var(--panel-2); border-radius:8px; padding:4px 6px 4px 10px;
+  }
+  .preset-name-btn{
+    flex:1 1 auto; min-width:0; text-align:left;
+    background:transparent; border:none; color:var(--text);
+    font-family:'IBM Plex Mono', monospace; font-size:13px;
+    cursor:pointer; padding:6px; border-radius:6px;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  .preset-name-btn:hover{background:var(--panel);}
+  .preset-row-actions{display:flex; gap:2px; flex:0 0 auto;}
+  .preset-edit-btn{
+    background:transparent; border:none; color:var(--muted);
+    cursor:pointer; padding:4px 8px; border-radius:6px; font-size:14px; line-height:1;
+  }
+  .preset-edit-btn:hover{color:var(--violet); background:var(--panel);}
+  .preset-edit-textarea{height:160px; resize:vertical;}
   .history-scroll{
     max-height:60vh;
     overflow-y:auto;
@@ -1574,6 +1602,10 @@ const APP_VERSION = 'v0.8.2';
     <div class="title-row">
       <label for="flavorTextInput">Flavor text (optional)</label>
       <textarea class="entry-input flavor-textarea" id="flavorTextInput" placeholder='e.g. "React within 3 days to claim your share!"' rows="2"></textarea>
+      <div class="flavor-preset-actions">
+        <button type="button" class="ghost-btn hidden" id="savePresetBtn">Save to Presets</button>
+        <button type="button" class="ghost-btn" id="yourPresetsBtn">Your Presets</button>
+      </div>
     </div>
   </header>
 
@@ -1655,6 +1687,42 @@ const APP_VERSION = 'v0.8.2';
         </button>
       </div>
       <div class="modal-status" id="shareStatus"></div>
+    </div>
+  </div>
+
+  <div class="modal-overlay hidden" id="savePresetOverlay">
+    <div class="modal-panel confirm-panel">
+      <div class="modal-title">Save to Presets</div>
+      <label class="modal-label" for="presetNameInput">Preset name</label>
+      <input type="text" class="entry-input" id="presetNameInput" placeholder='e.g. "Standard 3-day notice"' maxlength="40" autocomplete="off">
+      <div class="modal-status" id="presetNameStatus"></div>
+      <div class="modal-actions">
+        <button type="button" class="ghost-btn" id="presetNameCancelBtn">Cancel</button>
+        <button type="button" class="primary-btn" id="presetNameSaveBtn">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay hidden" id="presetsOverlay">
+    <div class="modal-panel presets-modal-panel" id="presetsModalPanel">
+      <div class="modal-head">
+        <div class="modal-title" id="presetsModalTitle">Your Presets</div>
+        <button type="button" class="modal-close" id="closePresetsBtn">×</button>
+      </div>
+      <div id="presetsListView">
+        <ul class="preset-list" id="presetList"></ul>
+        <div class="modal-hint" id="presetsEmptyHint">No saved presets yet - type some flavor text and use "Save to Presets" to add one.</div>
+      </div>
+      <div id="presetsEditView" class="hidden">
+        <label class="modal-label" for="presetEditNameInput">Name</label>
+        <input type="text" class="entry-input" id="presetEditNameInput" maxlength="40" autocomplete="off">
+        <label class="modal-label" for="presetEditTextInput" style="margin-top:10px;">Text</label>
+        <textarea class="entry-input flavor-textarea preset-edit-textarea" id="presetEditTextInput"></textarea>
+        <div class="modal-actions">
+          <button type="button" class="ghost-btn" id="presetEditCancelBtn">Cancel</button>
+          <button type="button" class="primary-btn" id="presetEditSaveBtn">Save Changes</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -3613,6 +3681,166 @@ roleSearchInput.addEventListener('keydown', e => {
 });
 
 const flavorTextInput = document.getElementById('flavorTextInput');
+
+// ---- Flavor text presets ----
+const FLAVOR_PRESETS_KEY = 'rollcall_vote_flavor_presets_v1';
+
+function loadFlavorPresets(){
+  try{ return JSON.parse(localStorage.getItem(FLAVOR_PRESETS_KEY) || '[]'); }
+  catch(e){ return []; }
+}
+function saveFlavorPresets(presets){
+  try{ localStorage.setItem(FLAVOR_PRESETS_KEY, JSON.stringify(presets)); }catch(e){ /* ignore */ }
+}
+
+const savePresetBtn = document.getElementById('savePresetBtn');
+const yourPresetsBtn = document.getElementById('yourPresetsBtn');
+
+function updateSavePresetBtnVisibility(){
+  savePresetBtn.classList.toggle('hidden', !flavorTextInput.value.trim());
+}
+flavorTextInput.addEventListener('input', updateSavePresetBtnVisibility);
+updateSavePresetBtnVisibility();
+
+// -- "Save to Presets" name-prompt modal --
+const savePresetOverlay = document.getElementById('savePresetOverlay');
+const presetNameInput = document.getElementById('presetNameInput');
+const presetNameStatusEl = document.getElementById('presetNameStatus');
+const presetNameCancelBtn = document.getElementById('presetNameCancelBtn');
+const presetNameSaveBtn = document.getElementById('presetNameSaveBtn');
+
+function openSavePresetModal(){
+  presetNameInput.value = '';
+  presetNameStatusEl.textContent = '';
+  presetNameStatusEl.className = 'modal-status';
+  savePresetOverlay.classList.remove('hidden');
+  lockBodyScroll();
+  presetNameInput.focus();
+}
+function closeSavePresetModal(){
+  savePresetOverlay.classList.add('hidden');
+  unlockBodyScroll();
+}
+savePresetBtn.addEventListener('click', openSavePresetModal);
+presetNameCancelBtn.addEventListener('click', closeSavePresetModal);
+savePresetOverlay.addEventListener('click', e => { if(e.target === savePresetOverlay) closeSavePresetModal(); });
+presetNameInput.addEventListener('keydown', e => { if(e.key === 'Enter') presetNameSaveBtn.click(); });
+presetNameSaveBtn.addEventListener('click', () => {
+  const name = presetNameInput.value.trim();
+  if(!name){
+    presetNameStatusEl.textContent = 'Enter a name for this preset.';
+    presetNameStatusEl.className = 'modal-status err';
+    return;
+  }
+  const presets = loadFlavorPresets();
+  presets.push({ id: crypto.randomUUID(), name, text: flavorTextInput.value });
+  saveFlavorPresets(presets);
+  closeSavePresetModal();
+});
+
+// -- "Your Presets" list / edit modal --
+const presetsOverlay = document.getElementById('presetsOverlay');
+const presetsModalPanel = document.getElementById('presetsModalPanel');
+const presetsModalTitle = document.getElementById('presetsModalTitle');
+const closePresetsBtn = document.getElementById('closePresetsBtn');
+const presetListEl = document.getElementById('presetList');
+const presetsEmptyHintEl = document.getElementById('presetsEmptyHint');
+const presetsListView = document.getElementById('presetsListView');
+const presetsEditView = document.getElementById('presetsEditView');
+const presetEditNameInput = document.getElementById('presetEditNameInput');
+const presetEditTextInput = document.getElementById('presetEditTextInput');
+const presetEditCancelBtn = document.getElementById('presetEditCancelBtn');
+const presetEditSaveBtn = document.getElementById('presetEditSaveBtn');
+let editingPresetId = null;
+
+function renderPresetList(){
+  const presets = loadFlavorPresets();
+  presetListEl.innerHTML = '';
+  presetsEmptyHintEl.classList.toggle('hidden', presets.length > 0);
+  presets.forEach(preset => {
+    const li = document.createElement('li');
+    li.className = 'preset-row';
+
+    const nameBtn = document.createElement('button');
+    nameBtn.type = 'button';
+    nameBtn.className = 'preset-name-btn';
+    nameBtn.textContent = preset.name;
+    nameBtn.title = preset.text;
+    nameBtn.addEventListener('click', () => {
+      flavorTextInput.value = preset.text;
+      updateSavePresetBtnVisibility();
+      closePresetsModal();
+    });
+    li.appendChild(nameBtn);
+
+    const actions = document.createElement('div');
+    actions.className = 'preset-row-actions';
+
+    const editBtn = document.createElement('button');
+    editBtn.type = 'button';
+    editBtn.className = 'preset-edit-btn';
+    editBtn.title = 'Edit';
+    editBtn.textContent = '✎';
+    editBtn.addEventListener('click', () => openPresetEditView(preset));
+    actions.appendChild(editBtn);
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.type = 'button';
+    deleteBtn.className = 'modal-close';
+    deleteBtn.title = 'Delete';
+    deleteBtn.textContent = '×';
+    deleteBtn.addEventListener('click', async () => {
+      if(!await confirmModal('Delete the preset "' + preset.name + '"?', 'Delete')) return;
+      saveFlavorPresets(loadFlavorPresets().filter(p => p.id !== preset.id));
+      renderPresetList();
+    });
+    actions.appendChild(deleteBtn);
+
+    li.appendChild(actions);
+    presetListEl.appendChild(li);
+  });
+}
+
+function showPresetsListView(){
+  editingPresetId = null;
+  presetsModalTitle.textContent = 'Your Presets';
+  presetsModalPanel.classList.remove('editing');
+  presetsListView.classList.remove('hidden');
+  presetsEditView.classList.add('hidden');
+  renderPresetList();
+}
+function openPresetEditView(preset){
+  editingPresetId = preset.id;
+  presetsModalTitle.textContent = 'Edit Preset';
+  presetsModalPanel.classList.add('editing');
+  presetsListView.classList.add('hidden');
+  presetsEditView.classList.remove('hidden');
+  presetEditNameInput.value = preset.name;
+  presetEditTextInput.value = preset.text;
+}
+function openPresetsModal(){
+  showPresetsListView();
+  presetsOverlay.classList.remove('hidden');
+  lockBodyScroll();
+}
+function closePresetsModal(){
+  presetsOverlay.classList.add('hidden');
+  unlockBodyScroll();
+}
+
+yourPresetsBtn.addEventListener('click', openPresetsModal);
+closePresetsBtn.addEventListener('click', closePresetsModal);
+presetsOverlay.addEventListener('click', e => { if(e.target === presetsOverlay) closePresetsModal(); });
+document.addEventListener('keydown', e => { if(e.key === 'Escape' && !presetsOverlay.classList.contains('hidden')) closePresetsModal(); });
+
+presetEditCancelBtn.addEventListener('click', showPresetsListView);
+presetEditSaveBtn.addEventListener('click', () => {
+  const name = presetEditNameInput.value.trim();
+  if(!name) return;
+  const presets = loadFlavorPresets().map(p => p.id === editingPresetId ? { ...p, name, text: presetEditTextInput.value } : p);
+  saveFlavorPresets(presets);
+  showPresetsListView();
+});
 
 // ---- Post to Discord for Voting ----
 const PENDING_VOTE_KEY = 'rollcall_vote_pending_v1';
