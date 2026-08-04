@@ -55,7 +55,7 @@ async function hmacVerify(secret, data, signatureB64){
 }
 
 // Generic signed-token helpers, used for both the short-lived OAuth `state`
-// param and the longer-lived officer session token. Signature verification
+// param and the longer-lived member session token. Signature verification
 // only proves the payload wasn't tampered with — callers must separately
 // check any `exp` field themselves, since state-tokens and session-tokens
 // use different freshness windows.
@@ -148,8 +148,8 @@ async function handleAuthCallback(request, env){
   const tokenData = await tokenRes.json();
 
   // Live role check: ask Discord, right now, whether this specific user
-  // currently holds the Officer role in our guild. This is the check that
-  // makes the whole flow safe to revoke instantly from Discord's side.
+  // currently holds one of the authorized roles in our guild. This is the
+  // check that makes the whole flow safe to revoke instantly from Discord's side.
   const guildId = await getGuildId(env);
   const memberRes = await fetch(`https://discord.com/api/users/@me/guilds/${guildId}/member`, {
     headers: { 'Authorization': `Bearer ${tokenData.access_token}` },
@@ -159,12 +159,12 @@ async function handleAuthCallback(request, env){
   }
   const member = await memberRes.json();
   const roles = member.roles || [];
-  const officerRoleIds = (env.OFFICER_ROLE_IDS || '').split(',').map(s => s.trim()).filter(Boolean);
-  if(!roles.some(r => officerRoleIds.includes(r))){
+  const authorizedRoleIds = (env.AUTHORIZED_ROLE_IDS || '').split(',').map(s => s.trim()).filter(Boolean);
+  if(!roles.some(r => authorizedRoleIds.includes(r))){
     return Response.redirect(returnTo + '#error=' + encodeURIComponent('Your Discord account does not have an authorized role.'), 302);
   }
 
-  const username = member.user && (member.user.global_name || member.user.username) || 'Officer';
+  const username = member.user && (member.user.global_name || member.user.username) || 'Member';
   const sessionToken = await signToken(env.SESSION_SIGNING_SECRET, {
     sub: member.user && member.user.id,
     username,
@@ -582,7 +582,7 @@ async function announceResults(voteId, request, env){
 
   const resultsFields = [{ name: 'Results', value: trimForEmbed(resultsText), inline: false }];
   if(leftover && leftover.length){
-    resultsFields.push({ name: 'Unwanted (no reactions)', value: trimForEmbed(leftover.map(escDiscord).join(', ')), inline: false });
+    resultsFields.push({ name: 'Unclaimed Items (no reactions)', value: trimForEmbed(leftover.map(escDiscord).join(', ')), inline: false });
   }
   const resultsEmbed = {
     title: (record.title ? record.title + ' - ' : '') + 'Results',
@@ -674,12 +674,11 @@ async function finalizeVoteEndpoint(voteId, env){
   return jsonResponse(result.record);
 }
 
-// Cancels a vote before it's rolled — the officer's escape hatch after
-// posting when they need to change the item list. Doesn't touch the
-// already-posted Discord message(s); it just stops the vote from ever being
-// finalized (the cron sweep only picks up status "pending", and finalizeVote
-// treats "aborted" as a terminal, idempotent no-op) so the officer is free to
-// post a fresh vote instead.
+// Cancels a vote before it's rolled — the escape hatch after posting when
+// the item list needs to change. Doesn't touch the already-posted Discord
+// message(s); it just stops the vote from ever being finalized (the cron
+// sweep only picks up status "pending", and finalizeVote treats "aborted"
+// as a terminal, idempotent no-op) so a fresh vote can be posted instead.
 async function abortVoteEndpoint(voteId, env){
   const raw = await env.VOTES_KV.get(`vote:${voteId}`);
   if(!raw) return jsonResponse({ error: 'Vote not found' }, 404);

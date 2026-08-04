@@ -596,21 +596,21 @@ const APP_VERSION = 'v0.8.2';
   .vote-status-msg:empty{margin-top:0; min-height:0;}
   .vote-status-msg.err{color:var(--bad);}
 
-  #unwantedItemsPanel{
+  #unclaimedItemsPanel{
     background:var(--panel);
     border:1px solid var(--line);
     border-radius:10px;
     padding:14px 16px;
     margin-bottom:14px;
   }
-  #unwantedItemsPanel.hidden{display:none;}
-  #unwantedItemsPanel .modal-title{font-size:14px; margin-bottom:10px;}
-  #unwantedItemsList{
+  #unclaimedItemsPanel.hidden{display:none;}
+  #unclaimedItemsPanel .modal-title{font-size:14px; margin-bottom:10px;}
+  #unclaimedItemsList{
     list-style:none; margin:0 0 12px; padding:0;
     display:flex; flex-direction:column; gap:4px;
     font-size:12.5px; color:var(--text);
   }
-  #unwantedItemsList li{padding:6px 10px; background:var(--panel-2); border-radius:6px;}
+  #unclaimedItemsList li{padding:6px 10px; background:var(--panel-2); border-radius:6px;}
 
   /* Shared by #postVoteBtn/#shareBtn: a big, low-opacity icon centered behind the
      label, filling the button as a watermark rather than sitting inline with the text. */
@@ -1828,10 +1828,10 @@ const APP_VERSION = 'v0.8.2';
   <div id="error"></div>
   <div id="discordStatus"></div>
 
-  <div id="unwantedItemsPanel" class="hidden">
-    <div class="modal-title">Unwanted Items</div>
-    <ul id="unwantedItemsList"></ul>
-    <button type="button" class="ghost-btn" id="reimportUnwantedBtn">Reimport for a new org-wide vote</button>
+  <div id="unclaimedItemsPanel" class="hidden">
+    <div class="modal-title">Unclaimed Items</div>
+    <ul id="unclaimedItemsList"></ul>
+    <button type="button" class="ghost-btn" id="reimportUnclaimedBtn">Reimport for a new org-wide vote</button>
   </div>
 
   <div id="resultsTitle"></div>
@@ -2128,8 +2128,8 @@ const RAVENHALL_LOGO_SRC = (function(){
 
 <script>
 // ---- Login gate: Discord OAuth login ahead of the boot animation ----
-// Only officers can pass this gate — access is checked live against a Discord
-// role at login time by the Worker's /auth/callback endpoint (see
+// Only trusted members can pass this gate — access is checked live against a
+// Discord role at login time by the Worker's /auth/callback endpoint (see
 // docs/superpowers/specs/2026-08-03-officer-oauth-auth-design.md). The
 // session token minted there is the same one workerFetch (further down)
 // sends on every Worker call, so there's one login for the whole app rather
@@ -2797,7 +2797,7 @@ function render(names, buckets, leftover, title, itemsSnapshot){
     card.className = 'card';
     card.style.animationDelay = (names.length * 0.05) + 's';
     const groupedLeftover = groupWonItems(leftover);
-    card.innerHTML = `<div class="name" style="color:var(--gold)">Unassigned <span class="idx">${leftover.length} left over</span></div>` +
+    card.innerHTML = `<div class="name" style="color:var(--gold)">Unclaimed <span class="idx">${leftover.length} left over</span></div>` +
       '<ul>' + groupedLeftover.map(g => `<li>${formatWonItemHtml(g.name, g.qty, itemByName)}</li>`).join('') + '</ul>';
     results.appendChild(card);
   }
@@ -3239,7 +3239,7 @@ function createHistoryEntryDiv(entry){
   const extraCount = rowsHtml.length - VISIBLE_ROWS;
 
   const leftoverRow = (entry.leftover && entry.leftover.length)
-    ? `<div class="hist-row"><span class="hist-name-label" style="color:var(--gold)">Unassigned</span><div class="hist-items">${groupWonItems(entry.leftover).map(g => formatWonItemHtml(g.name, g.qty, itemByName)).join('')}</div></div>`
+    ? `<div class="hist-row"><span class="hist-name-label" style="color:var(--gold)">Unclaimed</span><div class="hist-items">${groupWonItems(entry.leftover).map(g => formatWonItemHtml(g.name, g.qty, itemByName)).join('')}</div></div>`
     : '';
   const titleHtml = entry.title
     ? `<span style="color:var(--gold); font-weight:600;">${escapeHtml(entry.title)}</span> · `
@@ -3529,7 +3529,7 @@ async function refreshHistoryWebhookConfigStatus(){
     const data = await res.json();
     historyWebhookConfigured = !!data.historyWebhookConfigured;
   }catch(e){
-    return; // leave as unknown — don't scare the officer over a transient network blip
+    return; // leave as unknown — don't scare the user over a transient network blip
   }
   historyWebhookWarningEl.textContent = historyWebhookConfigured ? '' : '(no webhook configured on the Worker)';
   historyWebhookStatusEl.textContent = historyWebhookConfigured
@@ -4102,7 +4102,7 @@ async function recoverActiveVoteIfNeeded(){
     const record = await res.json();
     savePendingVote({ voteId: record.id, title: record.title, postedAt: record.createdAt, deadline: record.deadline });
     renderVoteStatus();
-  }catch(e){ /* not critical — worst case the officer notices and re-checks manually */ }
+  }catch(e){ /* not critical — worst case the user notices and re-checks manually */ }
 }
 
 // On load, resume showing a pending vote's status if one exists from a previous session.
@@ -4114,7 +4114,7 @@ if(loadPendingVote()){
 }
 
 // ---- Consume vote results into the existing roll pipeline ----
-let unwantedItems = []; // items with zero voters from the most recent finalized vote
+let unclaimedItems = []; // items with zero voters from the most recent finalized vote
 
 async function consumeVoteResults(record){
   clearPendingVote();
@@ -4123,11 +4123,11 @@ async function consumeVoteResults(record){
 
   const directAssign = []; // [{ item, voter }]
   const rollGroups = [];   // [{ item, voters }]
-  const unwanted = [];
+  const unclaimed = [];
 
   record.items.forEach((item, index) => {
     const voters = (record.results && record.results[String(index)]) || [];
-    if(voters.length === 0) unwanted.push(item);
+    if(voters.length === 0) unclaimed.push(item);
     else if(voters.length === 1) directAssign.push({ item, voter: voters[0] });
     else rollGroups.push({ item, voters });
   });
@@ -4156,8 +4156,8 @@ async function consumeVoteResults(record){
     });
   });
 
-  unwantedItems = unwanted;
-  renderUnwantedItems();
+  unclaimedItems = unclaimed;
+  renderUnclaimedItems();
 
   const title = record.title || '';
   const when = new Date().toLocaleString();
@@ -4165,9 +4165,9 @@ async function consumeVoteResults(record){
     name: it.name, displayName: it.name, detail: it.info ? `(${it.info})` : '', quality: it.quality, scu: it.scu,
   }));
   // groupWonItems (used by both render() and the history card) expects one flat
-  // entry per unit, same as buckets — not the {name, qty} shape unwanted items
+  // entry per unit, same as buckets — not the {name, qty} shape unclaimed items
   // are stored in.
-  const leftoverFlat = unwanted.flatMap(item => Array(item.qty).fill(item.name));
+  const leftoverFlat = unclaimed.flatMap(item => Array(item.qty).fill(item.name));
 
   render(allNames, buckets, leftoverFlat, title, itemsSnapshot);
   logRoll(allNames, buckets, leftoverFlat, title, when, itemsSnapshot);
@@ -4177,7 +4177,7 @@ async function consumeVoteResults(record){
     names: allNames.slice(),
     buckets: buckets.map(b => b.slice()),
     itemsSnapshot,
-    leftover: unwanted.map(it => ({ name: it.name, qty: it.qty })),
+    leftover: unclaimed.map(it => ({ name: it.name, qty: it.qty })),
   };
   shareBtn.disabled = false;
   shareBtn.classList.add('ready');
@@ -4196,7 +4196,7 @@ async function consumeVoteResults(record){
     const res = await workerFetch('/vote/' + record.id + '/announce', {
       method: 'POST',
       body: JSON.stringify({
-        names: allNames, buckets, leftover: unwanted.map(it => it.name),
+        names: allNames, buckets, leftover: unclaimed.map(it => it.name),
         spreadEven: evenSpread.checked, capOne: oneEach.checked,
         logToHistory: historyWebhookEnabled.checked,
       }),
@@ -4214,21 +4214,21 @@ async function consumeVoteResults(record){
   }
 }
 
-function renderUnwantedItems(){
-  const panel = document.getElementById('unwantedItemsPanel');
-  const list = document.getElementById('unwantedItemsList');
-  if(!unwantedItems.length){ panel.classList.add('hidden'); list.innerHTML = ''; return; }
+function renderUnclaimedItems(){
+  const panel = document.getElementById('unclaimedItemsPanel');
+  const list = document.getElementById('unclaimedItemsList');
+  if(!unclaimedItems.length){ panel.classList.add('hidden'); list.innerHTML = ''; return; }
   panel.classList.remove('hidden');
   list.innerHTML = '';
-  unwantedItems.forEach(it => {
+  unclaimedItems.forEach(it => {
     const li = document.createElement('li');
     li.textContent = `${it.qty}× ${it.name}`;
     list.appendChild(li);
   });
 }
 
-document.getElementById('reimportUnwantedBtn').addEventListener('click', () => {
-  const leftover = unwantedItems;
+document.getElementById('reimportUnclaimedBtn').addEventListener('click', () => {
+  const leftover = unclaimedItems;
   resetRollState();
   leftover.forEach(it => {
     for(let i = 0; i < it.qty; i++) addOrIncrementItem(it.name, it.meta || null);
@@ -4242,8 +4242,8 @@ document.getElementById('reimportUnwantedBtn').addEventListener('click', () => {
     }
   });
   renderItemsList();
-  unwantedItems = [];
-  renderUnwantedItems();
+  unclaimedItems = [];
+  renderUnclaimedItems();
 });
 
 // Trims a field value to fit Discord's 1024-char embed field limit
