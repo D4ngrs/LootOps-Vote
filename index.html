@@ -110,6 +110,7 @@ const APP_VERSION = 'v0.8.2';
   }
   .ghost-btn:hover{border-color:var(--violet); color:var(--text);}
   .ghost-btn.danger:hover{border-color:var(--bad); color:var(--bad); background:rgba(232,99,106,0.08);}
+  .ghost-btn.confirm:hover{border-color:var(--green); color:var(--green); background:rgba(95,184,107,0.08);}
 
   .title-row{margin-top:12px;}
   .title-row label{display:block; font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); margin-bottom:5px;}
@@ -826,6 +827,7 @@ const APP_VERSION = 'v0.8.2';
   }
   .hist-items{flex:1 1 auto; min-width:0; display:flex; flex-direction:column; gap:3px;}
   .hist-item-empty{color:var(--muted); font-style:italic;}
+  .hist-empty{color:var(--muted); font-style:italic; font-size:12.5px; padding:4px 0 2px;}
   .hist-rows-grid{
     display:grid;
     grid-template-columns:repeat(3, 1fr);
@@ -1719,7 +1721,6 @@ const APP_VERSION = 'v0.8.2';
       <span class="btn-label">Post to Discord for Voting</span>
     </button>
   </div>
-  <div id="voteStatus" class="hidden"></div>
 
   <div class="roll-row">
     <button id="shareBtn" type="button" disabled aria-label="Share result">
@@ -1741,6 +1742,7 @@ const APP_VERSION = 'v0.8.2';
       <span class="btn-label">Loot Sheet</span>
     </button>
   </div>
+  <div id="voteStatus" class="hidden"></div>
   <div id="error"></div>
   <div id="discordStatus"></div>
 
@@ -2712,6 +2714,9 @@ function render(names, buckets, leftover, title, itemsSnapshot){
       '<ul>' + groupedLeftover.map(g => `<li>${formatWonItemHtml(g.name, g.qty, itemByName)}</li>`).join('') + '</ul>';
     results.appendChild(card);
   }
+  if(!names.length && !leftover.length){
+    results.innerHTML = '<div style="color:var(--muted); font-size:12.5px; font-style:italic; text-align:center; padding:20px 0;">Nobody voted for anything this roll.</div>';
+  }
 }
 
 function escapeHtml(s){
@@ -3152,9 +3157,14 @@ function createHistoryEntryDiv(entry){
   const titleHtml = entry.title
     ? `<span style="color:var(--gold); font-weight:600;">${escapeHtml(entry.title)}</span> · `
     : '';
+  const emptyRoll = !entry.names.length && !(entry.leftover && entry.leftover.length);
+  const emptyHtml = emptyRoll
+    ? '<div class="hist-empty">Nobody voted for anything this roll.</div>'
+    : '';
 
   div.innerHTML =
     `<div class="hist-time"><span class="hist-time-text"> ${titleHtml}${escapeHtml(entry.when)}</span><button type="button" class="hist-share-btn">Share</button></div>` +
+    emptyHtml +
     `<div class="hist-rows-grid">${visibleHtml}</div>` +
     (extraHtml ? `<div class="hist-rows-grid hist-rows-extra">${extraHtml}</div>` : '') +
     (extraHtml ? `<button type="button" class="hist-expand-btn">Expand (${extraCount} more)</button>` : '') +
@@ -3736,7 +3746,7 @@ function renderVoteStatus(){
 
   const finalizeBtn = document.createElement('button');
   finalizeBtn.type = 'button';
-  finalizeBtn.className = 'ghost-btn danger';
+  finalizeBtn.className = 'ghost-btn confirm';
   finalizeBtn.textContent = 'Start Rolling Now';
   finalizeBtn.addEventListener('click', async () => {
     if(!await confirmModal('End voting now and roll with whoever has reacted so far?', 'Start Rolling')) return;
@@ -3907,9 +3917,13 @@ async function consumeVoteResults(record){
   const itemsSnapshot = record.items.map(it => ({
     name: it.name, displayName: it.name, detail: it.info ? `(${it.info})` : '', quality: it.quality, scu: it.scu,
   }));
+  // groupWonItems (used by both render() and the history card) expects one flat
+  // entry per unit, same as buckets — not the {name, qty} shape unwanted items
+  // are stored in.
+  const leftoverFlat = unwanted.flatMap(item => Array(item.qty).fill(item.name));
 
-  render(allNames, buckets, [], title, itemsSnapshot);
-  logRoll(allNames, buckets, [], title, when, itemsSnapshot);
+  render(allNames, buckets, leftoverFlat, title, itemsSnapshot);
+  logRoll(allNames, buckets, leftoverFlat, title, when, itemsSnapshot);
 
   lastRollResult = {
     title, when,
