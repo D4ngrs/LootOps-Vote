@@ -3850,9 +3850,29 @@ async function abortVoteNow(voteId){
   }
 }
 
+// Recovers from a lost local "which vote is pending" pointer (e.g. cleared
+// browser history/localStorage, or opening the app on a different device) by
+// asking the Worker whether a vote is still active — the vote itself always
+// lives server-side in KV, so it's never actually lost, just briefly
+// unreachable from this browser until this runs.
+async function recoverActiveVoteIfNeeded(){
+  if(loadPendingVote()) return;
+  try{
+    const res = await workerFetch('/vote/active');
+    if(!res.ok) return; // none active — nothing to recover
+    const record = await res.json();
+    savePendingVote({ voteId: record.id, title: record.title, postedAt: record.createdAt, deadline: record.deadline });
+    renderVoteStatus();
+  }catch(e){ /* not critical — worst case the officer notices and re-checks manually */ }
+}
+
 // On load, resume showing a pending vote's status if one exists from a previous session.
 renderVoteStatus();
-if(loadPendingVote()) checkVoteResults();
+if(loadPendingVote()){
+  checkVoteResults();
+}else{
+  recoverActiveVoteIfNeeded();
+}
 
 // ---- Consume vote results into the existing roll pipeline ----
 let unwantedItems = []; // items with zero voters from the most recent finalized vote

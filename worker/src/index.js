@@ -574,6 +574,25 @@ async function getVote(voteId, env){
   return jsonResponse(JSON.parse(raw));
 }
 
+// Recovery path for a browser that lost its local "which vote is pending"
+// pointer (rollcall_vote_pending_v1 — e.g. cleared history/localStorage, new
+// device). The vote itself always lives here in KV regardless of any
+// browser's state and the cron sweep finalizes it on schedule either way —
+// this just lets the app re-find it so Check Status/Start Rolling Now/Abort
+// and the eventual announce step are still reachable. Assumes at most one
+// vote is normally in flight at a time; if several are somehow pending, just
+// returns whichever KV happens to list first.
+async function getActiveVoteEndpoint(env){
+  const list = await env.VOTES_KV.list({ prefix: 'vote:' });
+  for(const key of list.keys){
+    const raw = await env.VOTES_KV.get(key.name);
+    if(!raw) continue;
+    const record = JSON.parse(raw);
+    if(record.status === 'pending') return jsonResponse(record);
+  }
+  return jsonResponse({ error: 'No active vote' }, 404);
+}
+
 // Non-destructive: reads current reaction state from Discord for a still-open
 // vote so the app can preview who's reacted so far, without finalizing (no
 // KV write, status stays "pending"). Once the vote is no longer pending, just
@@ -656,6 +675,10 @@ export default {
       }catch(e){
         return jsonResponse({ error: 'Failed to fetch roles', detail: String(e) }, 502);
       }
+    }
+
+    if(url.pathname === '/vote/active' && request.method === 'GET'){
+      return getActiveVoteEndpoint(env);
     }
 
     const voteMatch = url.pathname.match(/^\/vote\/([^/]+)(\/finalize|\/announce|\/abort|\/preview)?$/);
