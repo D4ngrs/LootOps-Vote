@@ -999,8 +999,12 @@ const APP_VERSION = 'v0.8.2';
   .history-modal-panel{max-width:560px;}
 
   .flavor-preset-actions{display:flex; gap:8px; margin-top:8px;}
-  .presets-modal-panel{max-width:480px;}
-  .presets-modal-panel.editing{max-width:560px;}
+  .presets-modal-panel{max-width:480px; transition:max-width .18s ease, border-color .18s ease;}
+  .presets-modal-panel.editing{max-width:560px; border-color:var(--violet);}
+  #presetsListView.hidden{display:none;}
+  #presetsEditView.hidden{display:none;}
+  #presetsEmptyHint.hidden{display:none;}
+  #savePresetBtn.hidden{display:none;}
   .preset-list{
     list-style:none; margin:0; padding:0;
     display:flex; flex-direction:column; gap:6px;
