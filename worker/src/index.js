@@ -434,6 +434,15 @@ async function fetchReactionUsers(env, messageId, emoji){
       await sleep(retryAfterMs);
       continue;
     }
+    if(res.status === 404){
+      // The message (or the whole channel) was deleted out from under us —
+      // by a mod, by accident, whatever. Treating this as "nobody voted for
+      // this item" (rather than throwing) means one deleted message can't
+      // permanently wedge the entire vote: without this, both the hourly
+      // cron sweep and a manual "Start Rolling Now" would fail the exact
+      // same way, forever, with Abort as the only way out.
+      return [];
+    }
     throw new Error(`Discord reaction fetch failed: HTTP ${res.status} (message ${messageId}, emoji ${emoji})`);
   }
   throw new Error(`Discord reaction fetch failed: exhausted retries after repeated HTTP 429 (message ${messageId}, emoji ${emoji})`);
