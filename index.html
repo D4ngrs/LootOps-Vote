@@ -1000,7 +1000,8 @@ const APP_VERSION = 'v0.8.2';
 
   .flavor-preset-actions{display:flex; gap:8px; margin-top:8px;}
   .presets-modal-panel{max-width:480px; transition:max-width .18s ease, border-color .18s ease;}
-  .presets-modal-panel.editing{max-width:560px; border-color:var(--violet);}
+  .presets-modal-panel.editing{max-width:920px; border-color:var(--violet);}
+  #presetEditNameInput{font-weight:700;}
   #presetsListView.hidden{display:none;}
   #presetsEditView.hidden{display:none;}
   #presetsEmptyHint.hidden{display:none;}
@@ -1028,7 +1029,7 @@ const APP_VERSION = 'v0.8.2';
     cursor:pointer; padding:4px 8px; border-radius:6px; font-size:14px; line-height:1;
   }
   .preset-edit-btn:hover{color:var(--violet); background:var(--panel);}
-  .preset-edit-textarea{height:160px; resize:vertical;}
+  .preset-edit-textarea{height:320px; font-size:13px; resize:vertical;}
   .history-scroll{
     max-height:60vh;
     overflow-y:auto;
