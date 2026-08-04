@@ -1551,14 +1551,7 @@ const APP_VERSION = 'v0.8.2';
         <button type="button" class="modal-close" id="closeSettingsBtn">×</button>
       </div>
       <div class="modal-title">History Log Webhook</div>
-      <label class="modal-label" for="historyWebhookUrlInput">Webhook URL</label>
-      <input type="text" class="entry-input" id="historyWebhookUrlInput" placeholder="https://discord.com/api/webhooks/…" autocomplete="off">
-      <div class="modal-hint">Optional second channel. When enabled, every roll also posts the same result summary here as an internal log — useful as a fallback reference if members have questions later.</div>
-      <div class="modal-actions">
-        <button type="button" class="primary-btn" id="saveHistoryWebhookBtn">Save</button>
-        <button type="button" class="ghost-btn" id="testHistoryWebhookBtn">Send test</button>
-        <button type="button" class="ghost-btn danger" id="clearHistoryWebhookBtn">Clear</button>
-      </div>
+      <div class="modal-hint">Optional second channel — when "Log to history channel" is checked before a roll, results also post there as an internal log. Configured server-side only (the Worker's <code>HISTORY_WEBHOOK_URL</code> secret), never entered here — a webhook URL is itself a credential, so it never touches the browser.</div>
       <div class="modal-status" id="historyWebhookStatus"></div>
 
       <hr class="modal-divider">
@@ -3346,14 +3339,11 @@ document.addEventListener('keydown', e => {
   if(e.key === 'Escape' && !changelogOverlay.classList.contains('hidden')) closeChangelogModal();
 });
 
-const EMBED_COLOR = 0xE8A33D; // matches --gold, used for the main setup embed
-
 const settingsOverlay = document.getElementById('settingsOverlay');
 const discordSettingsBtn = document.getElementById('discordSettingsBtn');
 const closeSettingsBtn = document.getElementById('closeSettingsBtn');
 
 function openSettings(){
-  historyWebhookUrlInput.value = loadHistoryWebhookUrl();
   workerUrlInput.value = loadWorkerUrl();
   settingsOverlay.classList.remove('hidden');
   lockBodyScroll();
@@ -3372,8 +3362,11 @@ document.addEventListener('keydown', e => {
   if(e.key === 'Escape' && !settingsOverlay.classList.contains('hidden')) closeSettings();
 });
 
-// ---- History log webhook (separate channel, independent toggle) ----
-const HISTORY_WEBHOOK_KEY = 'rollcall_vote_history_webhook_v1';
+// ---- History log webhook ----
+// The webhook URL itself is a credential (anyone holding it can post to that
+// channel), so unlike the Worker URL it's never entered in the browser at
+// all — it's configured server-side only (HISTORY_WEBHOOK_URL Worker secret).
+// This is just a per-roll opt-in flag telling the Worker whether to use it.
 const HISTORY_WEBHOOK_ENABLED_KEY = 'rollcall_vote_history_webhook_enabled_v1';
 
 function loadHistoryWebhookEnabled(){
@@ -3390,80 +3383,25 @@ historyWebhookEnabled.checked = loadHistoryWebhookEnabled();
 historyWebhookEnabled.addEventListener('change', () => saveHistoryWebhookEnabled(historyWebhookEnabled.checked));
 
 const historyWebhookWarningEl = document.getElementById('historyWebhookWarning');
-function refreshHistoryWebhookWarning(){
-  historyWebhookWarningEl.textContent = loadHistoryWebhookUrl() ? '' : '(no webhook set)';
-}
-refreshHistoryWebhookWarning();
-
-const historyWebhookUrlInput = document.getElementById('historyWebhookUrlInput');
-const saveHistoryWebhookBtn = document.getElementById('saveHistoryWebhookBtn');
-const testHistoryWebhookBtn = document.getElementById('testHistoryWebhookBtn');
-const clearHistoryWebhookBtn = document.getElementById('clearHistoryWebhookBtn');
 const historyWebhookStatusEl = document.getElementById('historyWebhookStatus');
+let historyWebhookConfigured = null; // null = not checked yet
 
-function loadHistoryWebhookUrl(){
-  try{ return localStorage.getItem(HISTORY_WEBHOOK_KEY) || ''; }
-  catch(e){ return ''; }
-}
-function saveHistoryWebhookUrl(url){
-  try{ localStorage.setItem(HISTORY_WEBHOOK_KEY, url); }catch(e){ /* storage unavailable, ignore */ }
-}
-function clearHistoryWebhookUrl(){
-  try{ localStorage.removeItem(HISTORY_WEBHOOK_KEY); }catch(e){ /* ignore */ }
-}
-
-function setHistoryWebhookStatus(msg, kind){
-  historyWebhookStatusEl.textContent = msg;
-  historyWebhookStatusEl.className = 'modal-status' + (kind ? ' ' + kind : '');
-}
-
-saveHistoryWebhookBtn.addEventListener('click', () => {
-  const url = historyWebhookUrlInput.value.trim();
-  if(!url){ setHistoryWebhookStatus('Enter a webhook URL first.', 'err'); return; }
-  if(!/^https:\/\/(discord\.com|discordapp\.com)\/api\/webhooks\//.test(url)){
-    setHistoryWebhookStatus('That doesn\'t look like a Discord webhook URL.', 'err');
-    return;
-  }
-  saveHistoryWebhookUrl(url);
-  setHistoryWebhookStatus('Saved. Rolls will now also log to this webhook when enabled.', 'ok');
-  refreshHistoryWebhookWarning();
-});
-
-clearHistoryWebhookBtn.addEventListener('click', async () => {
-  if(!await confirmModal('Remove the saved history log webhook?', 'Remove')) return;
-  clearHistoryWebhookUrl();
-  historyWebhookUrlInput.value = '';
-  setHistoryWebhookStatus('Webhook removed.');
-  refreshHistoryWebhookWarning();
-});
-
-testHistoryWebhookBtn.addEventListener('click', async () => {
-  const url = historyWebhookUrlInput.value.trim();
-  if(!url){ setHistoryWebhookStatus('Enter a webhook URL first.', 'err'); return; }
-  testHistoryWebhookBtn.disabled = true;
-  setHistoryWebhookStatus('Sending test message…');
+async function refreshHistoryWebhookConfigStatus(){
   try{
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        embeds: [{
-          title: 'LootOps - History log test message',
-          description: 'If you can see this, your history log webhook is set up correctly.',
-          color: EMBED_COLOR
-        }]
-      })
-    });
-    if(res.ok || res.status === 204){
-      setHistoryWebhookStatus('Test message sent — check Discord.', 'ok');
-    } else {
-      setHistoryWebhookStatus('Discord returned an error (HTTP ' + res.status + ').', 'err');
-    }
+    const res = await workerFetch('/config');
+    if(!res.ok) return;
+    const data = await res.json();
+    historyWebhookConfigured = !!data.historyWebhookConfigured;
   }catch(e){
-    setHistoryWebhookStatus('Could not reach Discord. Check the URL and your connection.', 'err');
+    return; // leave as unknown — don't scare the officer over a transient network blip
   }
-  testHistoryWebhookBtn.disabled = false;
-});
+  historyWebhookWarningEl.textContent = historyWebhookConfigured ? '' : '(no webhook configured on the Worker)';
+  historyWebhookStatusEl.textContent = historyWebhookConfigured
+    ? 'Configured.'
+    : 'Not set — ask whoever manages the Worker to run `wrangler secret put HISTORY_WEBHOOK_URL`.';
+  historyWebhookStatusEl.className = 'modal-status' + (historyWebhookConfigured ? ' ok' : '');
+}
+refreshHistoryWebhookConfigStatus();
 
 // ---- Discord Vote Worker connection ----
 const WORKER_URL_KEY = 'rollcall_vote_worker_url_v1';
@@ -3951,14 +3889,15 @@ async function consumeVoteResults(record){
   // a history-log webhook is enabled, posts the exact same embeds there too —
   // a single source of truth for the content rather than a separately-built
   // copy. Idempotent server-side, so a failed/retried call here can't double-post.
-  const historyWebhookUrl = (historyWebhookEnabled.checked && loadHistoryWebhookUrl()) || undefined;
+  // The webhook URL itself lives only in the Worker's HISTORY_WEBHOOK_URL secret —
+  // this just tells it whether to use it for this particular roll.
   try{
     const res = await workerFetch('/vote/' + record.id + '/announce', {
       method: 'POST',
       body: JSON.stringify({
         names: allNames, buckets, leftover: unwanted.map(it => it.name),
         spreadEven: evenSpread.checked, capOne: oneEach.checked,
-        historyWebhookUrl,
+        logToHistory: historyWebhookEnabled.checked,
       }),
     });
     if(res.ok){

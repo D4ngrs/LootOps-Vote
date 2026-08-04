@@ -489,7 +489,7 @@ async function announceResults(voteId, request, env){
   let body;
   try{ body = await request.json(); }
   catch(e){ return jsonResponse({ error: 'Invalid JSON body' }, 400); }
-  const { names, buckets, leftover, spreadEven, capOne, historyWebhookUrl } = body;
+  const { names, buckets, leftover, spreadEven, capOne, logToHistory } = body;
   if(!Array.isArray(names) || !Array.isArray(buckets)){
     return jsonResponse({ error: 'names and buckets are required arrays' }, 400);
   }
@@ -552,10 +552,13 @@ async function announceResults(voteId, request, env){
   // Optional second channel, posted with the exact same embeds as the main
   // announcement — the two are meant to be identical, so this is a single
   // source of truth for the content rather than a separately-built copy.
-  // Best-effort: the main announcement already succeeded regardless.
-  if(historyWebhookUrl){
+  // The URL itself is a credential (holding it is enough to post to that
+  // channel), so it lives only in this secret — never in the frontend/request
+  // body — and this is a best-effort add-on: the main announcement already
+  // succeeded regardless of whether this part works.
+  if(logToHistory && env.HISTORY_WEBHOOK_URL){
     try{
-      await fetch(historyWebhookUrl, {
+      await fetch(env.HISTORY_WEBHOOK_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ embeds: [mainEmbed, resultsEmbed] }),
@@ -666,6 +669,10 @@ export default {
 
     if(url.pathname === '/vote' && request.method === 'POST'){
       return postVote(request, env);
+    }
+
+    if(url.pathname === '/config' && request.method === 'GET'){
+      return jsonResponse({ historyWebhookConfigured: !!env.HISTORY_WEBHOOK_URL });
     }
 
     if(url.pathname === '/roles' && request.method === 'GET'){
