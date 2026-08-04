@@ -3550,7 +3550,10 @@ async function refreshHistoryWebhookConfigStatus(){
     : 'Not set - ask whoever manages the Worker to run `wrangler secret put HISTORY_WEBHOOK_URL`.';
   historyWebhookStatusEl.className = 'modal-status' + (historyWebhookConfigured ? ' ok' : '');
 }
-refreshHistoryWebhookConfigStatus();
+// Same guard as the vote-status bootstrap further down: only call the Worker
+// once there's an actual valid local session, so a logged-out visitor never
+// triggers a Worker request (and the 401-reload it would cause) at all.
+if(isSessionValidLocally()) refreshHistoryWebhookConfigStatus();
 
 // ---- Discord Vote Worker connection ----
 const WORKER_URL_KEY = 'rollcall_vote_worker_url_v1';
@@ -4118,12 +4121,20 @@ async function recoverActiveVoteIfNeeded(){
   }catch(e){ /* not critical — worst case the user notices and re-checks manually */ }
 }
 
-// On load, resume showing a pending vote's status if one exists from a previous session.
-renderVoteStatus();
-if(loadPendingVote()){
-  checkVoteResults();
-}else{
-  recoverActiveVoteIfNeeded();
+// On load, resume showing a pending vote's status if one exists from a previous
+// session — but only once there's actually a valid local session. Without this
+// guard, every visitor who hasn't logged in yet (the login gate is client-side,
+// so the rest of this script still runs underneath it) would hit the Worker,
+// always get a 401 (no valid bearer token), and workerFetch's 401 handler
+// reloads the page — which repeats the exact same check on the next load, a
+// real reload loop burning Worker requests for anyone not currently logged in.
+if(isSessionValidLocally()){
+  renderVoteStatus();
+  if(loadPendingVote()){
+    checkVoteResults();
+  }else{
+    recoverActiveVoteIfNeeded();
+  }
 }
 
 // ---- Consume vote results into the existing roll pipeline ----
