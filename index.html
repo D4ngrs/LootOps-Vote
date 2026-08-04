@@ -3655,6 +3655,11 @@ function buildVoteItemsPayload(){
     quality: (it.quality !== undefined && it.quality !== null) ? it.quality : null,
     scu: (it.scu !== undefined && it.scu !== null) ? it.scu : null,
     qty: it.qty,
+    // Round-tripped only so "Reimport for a new org-wide vote" can restore a
+    // real wiki-linked item (quality slider, SCU dropdown, wiki link) instead
+    // of falling back to a bare custom entry — the Worker itself never reads
+    // this, just stores and returns it as-is.
+    meta: it.meta || null,
   }));
 }
 
@@ -3986,8 +3991,17 @@ document.getElementById('reimportUnwantedBtn').addEventListener('click', () => {
   const leftover = unwantedItems;
   resetRollState();
   leftover.forEach(it => {
-    for(let i = 0; i < it.qty; i++) addOrIncrementItem(it.name, null);
+    for(let i = 0; i < it.qty; i++) addOrIncrementItem(it.name, it.meta || null);
+    // addOrIncrementItem only fills in a default quality/SCU when unset —
+    // restore the exact values the item had before it was voted on, rather
+    // than whatever the default happens to be.
+    const restored = itemsArr.find(x => x.name.toLowerCase() === it.name.trim().toLowerCase());
+    if(restored){
+      if(it.quality !== undefined && it.quality !== null) restored.quality = it.quality;
+      if(it.scu !== undefined && it.scu !== null) restored.scu = it.scu;
+    }
   });
+  renderItemsList();
   unwantedItems = [];
   renderUnwantedItems();
 });
