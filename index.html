@@ -2341,6 +2341,11 @@ function resetRollState(){
   namesArr = [];
   itemsArr = [];
   rollTitleInput.value = '';
+  flavorTextInput.value = '';
+  updateSavePresetBtnVisibility();
+  roleSearchInput.value = '';
+  selectedRoleId = null;
+  voteDurationSelect.value = '72'; // back to the default 3-day option
   results.innerHTML = '';
   resultsTitleEl.textContent = '';
   errorEl.textContent = '';
@@ -2355,7 +2360,7 @@ function resetRollState(){
 }
 
 resetBtn.addEventListener('click', async () => {
-  if(!await confirmModal('Reset names, items, and the roll title? This clears the current setup (your saved Discord settings and roll history are kept).', 'Reset')) return;
+  if(!await confirmModal('Reset names, items, and the rest of the vote setup (title, flavor text, role, duration)? This clears the current setup (your saved Discord settings, presets, and roll history are kept).', 'Reset')) return;
   resetRollState();
 });
 
