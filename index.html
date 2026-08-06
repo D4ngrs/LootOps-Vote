@@ -931,6 +931,22 @@ const APP_VERSION = 'v0.9.0';
     z-index:1000;
   }
   .modal-overlay.hidden{display:none;}
+  #sandboxFrame{
+    position:fixed; inset:0; pointer-events:none; z-index:9999;
+    border:6px solid #FF7A1A; box-sizing:border-box;
+  }
+  #sandboxFrame.hidden{display:none;}
+  #sandboxBadge{
+    position:fixed; top:0; left:50%; transform:translateX(-50%);
+    z-index:10000;
+    background:#FF7A1A; color:#14151A;
+    font-family:'IBM Plex Mono', monospace; font-weight:700; font-size:11px;
+    letter-spacing:.08em; text-transform:uppercase;
+    padding:4px 14px; border-radius:0 0 8px 8px;
+    pointer-events:none;
+  }
+  #sandboxBadge.hidden{display:none;}
+
   .modal-panel{
     background:var(--panel);
     border:1px solid var(--line);
@@ -1550,6 +1566,8 @@ const APP_VERSION = 'v0.9.0';
 </head>
 <body>
 <div id="bgWatermark"></div>
+<div id="sandboxFrame" class="hidden"></div>
+<div id="sandboxBadge" class="hidden">Sandbox Mode</div>
 
 <div id="loginGate">
   <div class="login-card">
@@ -1642,6 +1660,14 @@ const APP_VERSION = 'v0.9.0';
       <div class="modal-title">History Log Webhook</div>
       <div class="modal-hint">Optional second channel - when "Log to history channel" is checked before a roll, results also post there as an internal log. Configured server-side only (the Worker's <code>HISTORY_WEBHOOK_URL</code> secret), never entered here - a webhook URL is itself a credential, so it never touches the browser.</div>
       <div class="modal-status" id="historyWebhookStatus"></div>
+
+      <hr class="modal-divider">
+
+      <div class="modal-title">Sandbox Mode</div>
+      <div class="modal-hint">Test the full post/vote/roll flow without contacting Discord or the Worker. Fake reaction counts stand in for real Discord reactions, and rolls go to a separate history so they never mix with real ones.</div>
+      <div class="modal-actions">
+        <button type="button" class="ghost-btn" id="sandboxModeBtn">Enter Sandbox Mode</button>
+      </div>
 
       <hr class="modal-divider">
 
@@ -3604,6 +3630,49 @@ async function refreshHistoryWebhookConfigStatus(){
 // once there's an actual valid local session, so a logged-out visitor never
 // triggers a Worker request (and the 401-reload it would cause) at all.
 if(isSessionValidLocally()) refreshHistoryWebhookConfigStatus();
+
+// ---- Sandbox Mode ----
+// Gates a parallel localStorage namespace (see loadHistory/saveHistory and
+// loadPendingVote/savePendingVote/clearPendingVote below) and local stand-ins
+// for the Worker's vote-lifecycle endpoints, so the full post/vote/roll UI
+// can be exercised without ever contacting the Worker or Discord.
+const SANDBOX_MODE_KEY = 'rollcall_sandbox_mode_v1';
+
+function isSandboxMode(){
+  try{ return localStorage.getItem(SANDBOX_MODE_KEY) === '1'; }
+  catch(e){ return false; }
+}
+
+function updateSandboxIndicator(){
+  const on = isSandboxMode();
+  document.getElementById('sandboxFrame').classList.toggle('hidden', !on);
+  document.getElementById('sandboxBadge').classList.toggle('hidden', !on);
+  const btn = document.getElementById('sandboxModeBtn');
+  if(btn) btn.textContent = on ? 'Leave Sandbox Mode' : 'Enter Sandbox Mode';
+}
+
+async function setSandboxMode(on){
+  if(on && loadPendingVote()){
+    // loadPendingVote() at this point still reads the *current* mode's key -
+    // if we're not in sandbox mode yet, this checks the real pending vote.
+    const proceed = await confirmModal("A live vote is still running and won't be affected. Enter Sandbox Mode anyway?", 'Enter Sandbox Mode');
+    if(!proceed) return;
+  }
+  try{
+    if(on) localStorage.setItem(SANDBOX_MODE_KEY, '1');
+    else localStorage.removeItem(SANDBOX_MODE_KEY);
+  }catch(e){ /* storage unavailable, ignore */ }
+  updateSandboxIndicator();
+  renderVoteStatus();
+  renderHistory();
+  if(!historyOverlay.classList.contains('hidden')) renderHistoryModalList();
+}
+
+document.getElementById('sandboxModeBtn').addEventListener('click', () => {
+  setSandboxMode(!isSandboxMode());
+});
+
+updateSandboxIndicator();
 
 // ---- Discord Vote Worker connection ----
 const WORKER_URL_KEY = 'rollcall_vote_worker_url_v1';
