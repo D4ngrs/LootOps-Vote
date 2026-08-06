@@ -4001,6 +4001,131 @@ presetEditSaveBtn.addEventListener('click', () => {
   showPresetsListView();
 });
 
+// ---- Sandbox Mode: fake vote record + Discord-message-preview text ----
+// The record shape mirrors exactly what the Worker's KV would hold for a real
+// vote ({ id, items, title, roleId, flavorText, createdAt, deadline, status,
+// results, finalizedAt }), and record.results uses the exact same shape
+// consumeVoteResults() already reads from a real vote ({ "<itemIndex>":
+// ["voterName", ...] }) - so a sandbox record can be handed to
+// consumeVoteResults() completely unmodified once finalized (see Task 7).
+const SANDBOX_RECORD_KEY = 'rollcall_vote_test_record_v1';
+
+function loadSandboxRecord(){
+  try{ const raw = localStorage.getItem(SANDBOX_RECORD_KEY); return raw ? JSON.parse(raw) : null; }
+  catch(e){ return null; }
+}
+function saveSandboxRecord(record){
+  try{ localStorage.setItem(SANDBOX_RECORD_KEY, JSON.stringify(record)); }catch(e){ /* ignore */ }
+}
+function clearSandboxRecord(){
+  try{ localStorage.removeItem(SANDBOX_RECORD_KEY); }catch(e){ /* ignore */ }
+}
+
+const FAKE_NAME_POOL = [
+  'Test Alpha', 'Test Bravo', 'Test Charlie', 'Test Delta', 'Test Echo',
+  'Test Foxtrot', 'Test Golf', 'Test Hotel', 'Test India', 'Test Juliett',
+];
+
+// Draws `count` distinct names at random from the shared pool (capped at the
+// pool size) - shared across every item in a sandbox vote, so the same fake
+// name can end up claiming multiple items, letting the grouped-by-person
+// results view be tested realistically.
+function pickFakeNames(count){
+  const n = Math.max(0, Math.min(count, FAKE_NAME_POOL.length));
+  const shuffled = FAKE_NAME_POOL.slice();
+  for(let i = shuffled.length - 1; i > 0; i--){
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled.slice(0, n);
+}
+
+// Plain-text port of the Worker's formatItemSummary (worker/src/index.js) -
+// duplicated rather than shared, since the frontend and Worker are separate
+// deployables with no build step or shared module system between them.
+function formatItemSummaryText(it){
+  const namePart = `${it.qty}× **${it.name}**` + (it.info ? ` _(${it.info})_` : '');
+  const segments = [namePart];
+  if(it.quality !== null && it.quality !== undefined) segments.push('Q' + it.quality);
+  if(it.scu !== null && it.scu !== undefined) segments.push(it.scu + ' SCU');
+  return segments.join('  |  ');
+}
+
+// Converts the small subset of Discord markdown this preview actually
+// produces (**bold**, _italic_, newlines) into HTML for display in a
+// floating panel - intentionally not a full markdown parser.
+function mdPreviewToHtml(text){
+  return escapeHtml(text)
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/_(.+?)_/g, '<em>$1</em>')
+    .replace(/\n/g, '<br>');
+}
+
+// Plain-text port of the Worker's formatBatchContent, deliberately scoped
+// down: no per-item Discord emoji assignment and no 20-reactions-per-message
+// batching, since both exist only to satisfy Discord's own reaction cap and
+// aren't meaningful to replicate in a preview that never actually posts.
+function buildSandboxVoteMessageText(record){
+  const lines = [];
+  if(record.roleId) lines.push(`(would ping role ${record.roleId})`);
+  const titleLine = `**${record.title || 'LootOps Vote'}**`;
+  lines.push(titleLine);
+  if(record.status === 'ready' || record.status === 'aborted'){
+    lines.push('Voting closed.');
+  }else{
+    lines.push(`Voting closes in ${formatCountdown(record.deadline - Date.now())}`);
+  }
+  if(record.flavorText) lines.push(record.flavorText);
+  lines.push('React to claim interest:');
+  record.items.forEach((it, i) => {
+    lines.push(`${i + 1}.  |  ` + formatItemSummaryText(it));
+  });
+  return lines.join('\n');
+}
+
+// Plain-text port of the Worker's announceResults two-embed content. Returns
+// { main: {title, fields}, results: {title, fields} } where each field is
+// [label, value] - the caller (Task 7's openResultsPreviewWindow) is
+// responsible for rendering these as styled blocks.
+function buildSandboxResultsBlocks(record, names, buckets, leftover, spreadEven, capOne){
+  const itemMetaByName = new Map(record.items.map(it => [it.name, it]));
+  function groupWon(bucket){
+    const counts = new Map();
+    bucket.forEach(n => counts.set(n, (counts.get(n) || 0) + 1));
+    return Array.from(counts.entries());
+  }
+  const participantsText = names.join(', ') || '-';
+  const lootPoolText = record.items.map(formatItemSummaryText).join('\n') || '-';
+  const resultsText = names.length
+    ? names.map((name, i) => {
+        const got = buckets[i] || [];
+        if(!got.length) return `**${name}:**\n_nothing_`;
+        const itemLines = groupWon(got).map(([itemName, qty]) => {
+          const meta = itemMetaByName.get(itemName) || {};
+          return formatItemSummaryText({ name: itemName, info: meta.info, quality: meta.quality, scu: meta.scu, qty });
+        }).join('\n');
+        return `**${name}:**\n${itemLines}`;
+      }).join('\n\n')
+    : '_No one reacted to any item._';
+
+  const main = {
+    title: record.title || 'Untitled Roll',
+    fields: [
+      ['Date & Time', new Date().toLocaleString()],
+      ['Participants', participantsText],
+      ['Roll Mode', `Spread evenly: ${spreadEven ? 'Yes' : 'No'}\nCap at 1 item: ${capOne ? 'Yes' : 'No'}`],
+      ['Loot Pool', lootPoolText],
+    ],
+  };
+  const resultsFields = [['Results', resultsText]];
+  if(leftover && leftover.length) resultsFields.push(['Unclaimed Items (no reactions)', leftover.join(', ')]);
+  const results = {
+    title: (record.title ? record.title + ' - ' : '') + 'Results',
+    fields: resultsFields,
+  };
+  return { main, results };
+}
+
 // ---- Post to Discord for Voting ----
 const PENDING_VOTE_KEY = 'rollcall_vote_pending_v1';
 const SANDBOX_PENDING_VOTE_KEY = 'rollcall_vote_test_pending_v1';
