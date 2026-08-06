@@ -947,6 +947,36 @@ const APP_VERSION = 'v0.9.0';
   }
   #sandboxBadge.hidden{display:none;}
 
+  .floating-panel{
+    position:fixed;
+    z-index:9500;
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:12px;
+    box-shadow:6px 10px 32px rgba(0,0,0,0.5);
+    width:360px;
+    max-width:calc(100vw - 32px);
+    max-height:calc(100vh - 32px);
+    display:flex;
+    flex-direction:column;
+  }
+  .floating-panel-head{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:14px 16px; border-bottom:1px solid var(--line);
+    cursor:move; user-select:none; flex:0 0 auto;
+  }
+  .floating-panel-title{
+    font-family:'Space Grotesk', sans-serif; font-weight:700; font-size:14px; color:var(--text);
+  }
+  .floating-panel-close{
+    background:transparent; border:none; color:var(--bad);
+    font-size:18px; line-height:1; cursor:pointer; padding:2px 6px; border-radius:4px;
+  }
+  .floating-panel-close:hover{background:var(--panel-2);}
+  .floating-panel-body{
+    padding:16px; overflow-y:auto; font-size:12.5px; color:var(--text); line-height:1.5;
+  }
+
   .modal-panel{
     background:var(--panel);
     border:1px solid var(--line);
@@ -4124,6 +4154,55 @@ function buildSandboxResultsBlocks(record, names, buckets, leftover, spreadEven,
     fields: resultsFields,
   };
   return { main, results };
+}
+
+// ---- Reusable non-modal floating panel ----
+// Unlike the app's existing .modal-overlay/.modal-panel dialogs (which block
+// interaction with the rest of the page via a backdrop), this has no backdrop
+// and can be dragged around by its header - the rest of the page stays fully
+// interactive while it's open. Used by Sandbox Mode's Window 1 and Window 2.
+function createFloatingPanel({ title, bodyHtml, defaultRight = 24, defaultTop = 80 }){
+  const panel = document.createElement('div');
+  panel.className = 'floating-panel';
+  panel.style.top = defaultTop + 'px';
+  panel.style.right = defaultRight + 'px';
+  panel.innerHTML =
+    '<div class="floating-panel-head">' +
+      '<div class="floating-panel-title"></div>' +
+      '<button type="button" class="floating-panel-close" aria-label="Close">×</button>' +
+    '</div>' +
+    '<div class="floating-panel-body"></div>';
+  panel.querySelector('.floating-panel-title').textContent = title;
+  panel.querySelector('.floating-panel-body').innerHTML = bodyHtml;
+  document.body.appendChild(panel);
+
+  const head = panel.querySelector('.floating-panel-head');
+  let dragging = false, startX = 0, startY = 0, startLeft = 0, startTop = 0;
+  head.addEventListener('pointerdown', e => {
+    dragging = true;
+    const rect = panel.getBoundingClientRect();
+    panel.style.left = rect.left + 'px';
+    panel.style.top = rect.top + 'px';
+    panel.style.right = 'auto';
+    startX = e.clientX; startY = e.clientY;
+    startLeft = rect.left; startTop = rect.top;
+    head.setPointerCapture(e.pointerId);
+  });
+  head.addEventListener('pointermove', e => {
+    if(!dragging) return;
+    panel.style.left = (startLeft + (e.clientX - startX)) + 'px';
+    panel.style.top = (startTop + (e.clientY - startY)) + 'px';
+  });
+  head.addEventListener('pointerup', () => { dragging = false; });
+
+  const close = () => panel.remove();
+  panel.querySelector('.floating-panel-close').addEventListener('click', close);
+
+  return {
+    el: panel,
+    close,
+    setBody: html => { panel.querySelector('.floating-panel-body').innerHTML = html; },
+  };
 }
 
 // ---- Post to Discord for Voting ----
