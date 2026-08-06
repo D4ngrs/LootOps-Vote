@@ -3238,16 +3238,21 @@ shareCopyBtn.addEventListener('click', async () => {
 });
 
 const HISTORY_KEY = 'rollcall_vote_history_v1';
+const SANDBOX_HISTORY_KEY = 'rollcall_vote_test_history_v1';
+
+function historyKey(){
+  return isSandboxMode() ? SANDBOX_HISTORY_KEY : HISTORY_KEY;
+}
 
 function loadHistory(){
   try{
-    const raw = localStorage.getItem(HISTORY_KEY);
+    const raw = localStorage.getItem(historyKey());
     return raw ? JSON.parse(raw) : [];
   }catch(e){ return []; }
 }
 
 function saveHistory(entries){
-  try{ localStorage.setItem(HISTORY_KEY, JSON.stringify(entries)); }catch(e){ /* storage unavailable, ignore */ }
+  try{ localStorage.setItem(historyKey(), JSON.stringify(entries)); }catch(e){ /* storage unavailable, ignore */ }
 }
 
 const HISTORY_PREVIEW_COUNT = 2;
@@ -3998,16 +4003,21 @@ presetEditSaveBtn.addEventListener('click', () => {
 
 // ---- Post to Discord for Voting ----
 const PENDING_VOTE_KEY = 'rollcall_vote_pending_v1';
+const SANDBOX_PENDING_VOTE_KEY = 'rollcall_vote_test_pending_v1';
+
+function pendingVoteKey(){
+  return isSandboxMode() ? SANDBOX_PENDING_VOTE_KEY : PENDING_VOTE_KEY;
+}
 
 function loadPendingVote(){
-  try{ const raw = localStorage.getItem(PENDING_VOTE_KEY); return raw ? JSON.parse(raw) : null; }
+  try{ const raw = localStorage.getItem(pendingVoteKey()); return raw ? JSON.parse(raw) : null; }
   catch(e){ return null; }
 }
 function savePendingVote(vote){
-  try{ localStorage.setItem(PENDING_VOTE_KEY, JSON.stringify(vote)); }catch(e){ /* ignore */ }
+  try{ localStorage.setItem(pendingVoteKey(), JSON.stringify(vote)); }catch(e){ /* ignore */ }
 }
 function clearPendingVote(){
-  try{ localStorage.removeItem(PENDING_VOTE_KEY); }catch(e){ /* ignore */ }
+  try{ localStorage.removeItem(pendingVoteKey()); }catch(e){ /* ignore */ }
 }
 
 // Reuses the exact fields already computed for each item (displayName, detail,
