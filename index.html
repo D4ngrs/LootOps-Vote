@@ -851,6 +851,15 @@ const APP_VERSION = 'v0.9.0';
     transition:border-color .15s ease, color .15s ease;
   }
   .hist-expand-btn:hover{border-color:var(--violet); color:var(--text);}
+  .hist-reimport-btn{
+    display:block;
+    margin:8px auto 0;
+    font-family:'IBM Plex Mono', monospace;
+    font-size:11px;
+    padding:4px 10px;
+  }
+  .hist-reimport-btn:disabled{opacity:.5; cursor:default; border-color:var(--line); color:var(--muted);}
+  .hist-reimport-btn:disabled:hover{border-color:var(--line); color:var(--muted);}
   .hist-empty{color:var(--muted); font-size:13px; font-style:italic;}
 
   footer{text-align:center; color:var(--muted); font-size:11px; margin-top:16px;}
@@ -3218,7 +3227,7 @@ function saveHistory(entries){
 const HISTORY_PREVIEW_COUNT = 2;
 const historyMoreBtn = document.getElementById('historyMoreBtn');
 
-function createHistoryEntryDiv(entry){
+function createHistoryEntryDiv(entry, index){
   const div = document.createElement('div');
   div.className = 'hist-entry';
   // Older history entries (saved before quality/SCU snapshots existed) simply have no
@@ -3239,8 +3248,12 @@ function createHistoryEntryDiv(entry){
   const extraHtml = rowsHtml.slice(VISIBLE_ROWS).join('');
   const extraCount = rowsHtml.length - VISIBLE_ROWS;
 
-  const leftoverRow = (entry.leftover && entry.leftover.length)
+  const hasLeftover = entry.leftover && entry.leftover.length;
+  const leftoverRow = hasLeftover
     ? `<div class="hist-row"><span class="hist-name-label" style="color:var(--gold)">Unclaimed</span><div class="hist-items">${groupWonItems(entry.leftover).map(g => formatWonItemHtml(g.name, g.qty, itemByName)).join('')}</div></div>`
+    : '';
+  const reimportHtml = hasLeftover
+    ? `<button type="button" class="ghost-btn hist-reimport-btn"${entry.leftoverReimported ? ' disabled' : ''}>${entry.leftoverReimported ? 'Reimported' : 'Reimport unclaimed items'}</button>`
     : '';
   const titleHtml = entry.title
     ? `<span style="color:var(--gold); font-weight:600;">${escapeHtml(entry.title)}</span> · `
@@ -3256,7 +3269,8 @@ function createHistoryEntryDiv(entry){
     `<div class="hist-rows-grid">${visibleHtml}</div>` +
     (extraHtml ? `<div class="hist-rows-grid hist-rows-extra">${extraHtml}</div>` : '') +
     (extraHtml ? `<button type="button" class="hist-expand-btn">Expand (${extraCount} more)</button>` : '') +
-    leftoverRow;
+    leftoverRow +
+    reimportHtml;
 
   if(extraHtml){
     const expandBtn = div.querySelector('.hist-expand-btn');
@@ -3270,6 +3284,39 @@ function createHistoryEntryDiv(entry){
   div.querySelector('.hist-share-btn').addEventListener('click', () => {
     openShareModal(historyEntryToShareResult(entry));
   });
+
+  const reimportBtn = div.querySelector('.hist-reimport-btn');
+  if(reimportBtn){
+    reimportBtn.addEventListener('click', async () => {
+      const ok = await confirmModal('Reimport this roll\'s unclaimed items into a new vote? This replaces everything currently in Names and Items.', 'Reimport unclaimed items');
+      if(!ok) return;
+      resetRollState();
+      groupWonItems(entry.leftover).forEach(g => {
+        const snap = itemByName.get(g.name);
+        for(let i = 0; i < g.qty; i++) addOrIncrementItem(g.name, (snap && snap.meta) || null);
+        // addOrIncrementItem only fills in a default quality/SCU when unset - restore
+        // the exact values the item had at roll time, rather than whatever the
+        // default happens to be.
+        const restored = itemsArr.find(x => x.name.toLowerCase() === g.name.trim().toLowerCase());
+        if(restored && snap){
+          if(snap.quality !== undefined && snap.quality !== null) restored.quality = snap.quality;
+          if(snap.scu !== undefined && snap.scu !== null) restored.scu = snap.scu;
+        }
+      });
+      renderItemsList();
+      entry.leftoverReimported = true;
+      markLeftoverReimported(index);
+      reimportBtn.disabled = true;
+      reimportBtn.textContent = 'Reimported';
+      // The live Unclaimed Items panel mirrors the newest history entry - if that's
+      // the one just reimported from here, clear it too so the two stay in sync.
+      const entries = loadHistory();
+      if(index === entries.length - 1){
+        unclaimedItems = [];
+        renderUnclaimedItems();
+      }
+    });
+  }
 
   return div;
 }
@@ -3289,16 +3336,19 @@ function renderHistory(){
     return;
   }
 
-  const newestFirst = entries.slice().reverse();
-  newestFirst.slice(0, HISTORY_PREVIEW_COUNT).forEach(entry => {
-    list.appendChild(createHistoryEntryDiv(entry));
+  // Entries are append-only (see markLeftoverReimported), so each entry's original
+  // array index is captured here, before reversing to newest-first, as a stable key.
+  const newestFirst = entries.map((entry, index) => ({ entry, index })).reverse();
+  newestFirst.slice(0, HISTORY_PREVIEW_COUNT).forEach(({entry, index}) => {
+    list.appendChild(createHistoryEntryDiv(entry, index));
   });
 
   historyMoreBtn.style.display = newestFirst.length > HISTORY_PREVIEW_COUNT ? 'block' : 'none';
 }
 
 function renderHistoryModalList(){
-  const newestFirst = loadHistory().slice().reverse();
+  const entries = loadHistory();
+  const newestFirst = entries.map((entry, index) => ({ entry, index })).reverse();
   const older = newestFirst.slice(HISTORY_PREVIEW_COUNT);
   const container = document.getElementById('historyModalList');
   container.innerHTML = '';
@@ -3306,7 +3356,7 @@ function renderHistoryModalList(){
     container.innerHTML = '<div class="hist-empty">No older rolls.</div>';
     return;
   }
-  older.forEach(entry => container.appendChild(createHistoryEntryDiv(entry)));
+  older.forEach(({entry, index}) => container.appendChild(createHistoryEntryDiv(entry, index)));
 }
 
 function logRoll(names, buckets, leftover, title, when, itemsSnapshot){
@@ -4186,7 +4236,7 @@ async function consumeVoteResults(record){
   const title = record.title || '';
   const when = new Date().toLocaleString();
   const itemsSnapshot = record.items.map(it => ({
-    name: it.name, displayName: it.name, detail: it.info ? `(${it.info})` : '', quality: it.quality, scu: it.scu,
+    name: it.name, displayName: it.name, detail: it.info ? `(${it.info})` : '', quality: it.quality, scu: it.scu, meta: it.meta || null,
   }));
   // groupWonItems (used by both render() and the history card) expects one flat
   // entry per unit, same as buckets — not the {name, qty} shape unclaimed items
@@ -4268,7 +4318,26 @@ document.getElementById('reimportUnclaimedBtn').addEventListener('click', () => 
   renderItemsList();
   unclaimedItems = [];
   renderUnclaimedItems();
+  // This panel always mirrors the most recently logged history entry's unclaimed
+  // items, so mark that entry reimported too - otherwise its "Reimport unclaimed
+  // items" button in the History list would still show enabled after this.
+  const entries = loadHistory();
+  if(entries.length){
+    markLeftoverReimported(entries.length - 1);
+    renderHistory();
+    if(!historyOverlay.classList.contains('hidden')) renderHistoryModalList();
+  }
 });
+
+// Persists that a history entry's unclaimed items have already been reimported into
+// a new vote, so its "Reimport unclaimed items" button (and the live panel's own
+// button, for the newest entry) can't be used twice. Entries are append-only (no
+// per-entry delete exists, only "Clear all"), so the array index is a stable key.
+function markLeftoverReimported(index){
+  const entries = loadHistory();
+  if(entries[index]) entries[index].leftoverReimported = true;
+  saveHistory(entries);
+}
 
 // Trims a field value to fit Discord's 1024-char embed field limit
 function trimForEmbed(text){
