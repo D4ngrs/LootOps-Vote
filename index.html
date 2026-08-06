@@ -4205,6 +4205,55 @@ function createFloatingPanel({ title, bodyHtml, defaultRight = 24, defaultTop = 
   };
 }
 
+// ---- Sandbox Mode: Window 1 (fake vote / reactions editor) ----
+let fakeVoteWindow = null;
+
+function renderFakeVoteWindowBody(record){
+  const messageHtml = mdPreviewToHtml(buildSandboxVoteMessageText(record));
+  const rowsHtml = record.items.map((it, i) => {
+    const current = (record.results && record.results[String(i)]) || [];
+    return (
+      '<div style="display:flex; align-items:center; justify-content:space-between; gap:8px; padding:6px 0; border-bottom:1px solid var(--line);">' +
+        '<span style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' + escapeHtml(it.name) + '</span>' +
+        '<input type="number" min="0" max="10" value="' + current.length + '" data-item-index="' + i + '" class="entry-input sandbox-reaction-count" style="width:56px; padding:6px 8px;">' +
+      '</div>'
+    );
+  }).join('');
+  return (
+    '<div style="background:var(--panel-2); border:1px solid var(--line); border-radius:8px; padding:10px 12px; margin-bottom:14px; white-space:pre-wrap;">' + messageHtml + '</div>' +
+    '<div class="modal-label" style="margin-bottom:6px;">Fake reaction counts</div>' +
+    rowsHtml
+  );
+}
+
+function wireFakeVoteWindowInputs(win, record){
+  win.el.querySelectorAll('.sandbox-reaction-count').forEach(input => {
+    input.addEventListener('change', () => {
+      const i = Number(input.dataset.itemIndex);
+      let count = Math.max(0, Math.min(10, Math.floor(Number(input.value)) || 0));
+      input.value = count;
+      const current = loadSandboxRecord();
+      if(!current) return;
+      current.results = current.results || {};
+      current.results[String(i)] = pickFakeNames(count);
+      saveSandboxRecord(current);
+      win.setBody(renderFakeVoteWindowBody(current));
+      wireFakeVoteWindowInputs(win, current);
+    });
+  });
+}
+
+function openFakeVoteWindow(record){
+  if(fakeVoteWindow) fakeVoteWindow.close();
+  fakeVoteWindow = createFloatingPanel({
+    title: 'Sandbox: would post to Discord',
+    bodyHtml: renderFakeVoteWindowBody(record),
+  });
+  wireFakeVoteWindowInputs(fakeVoteWindow, record);
+  const originalClose = fakeVoteWindow.close;
+  fakeVoteWindow.close = () => { originalClose(); fakeVoteWindow = null; };
+}
+
 // ---- Post to Discord for Voting ----
 const PENDING_VOTE_KEY = 'rollcall_vote_pending_v1';
 const SANDBOX_PENDING_VOTE_KEY = 'rollcall_vote_test_pending_v1';
@@ -4253,6 +4302,27 @@ postVoteBtn.addEventListener('click', async () => {
   const title = rollTitleInput.value.trim();
   if(!title){ errorEl.textContent = 'Add a title before posting.'; return; }
   if(itemsArr.length === 0){ errorEl.textContent = 'Add at least one item before posting.'; return; }
+
+  if(isSandboxMode()){
+    const record = {
+      id: 'sandbox-' + Date.now(),
+      items: buildVoteItemsPayload(),
+      title,
+      roleId: selectedRoleId || null,
+      flavorText: flavorTextInput.value.trim() || null,
+      createdAt: Date.now(),
+      deadline: Date.now() + (Number(voteDurationSelect.value) || 72) * 60 * 60 * 1000,
+      status: 'pending',
+      results: {},
+      finalizedAt: null,
+    };
+    saveSandboxRecord(record);
+    savePendingVote({ voteId: record.id, title, postedAt: record.createdAt, deadline: record.deadline });
+    renderVoteStatus();
+    openFakeVoteWindow(record);
+    return;
+  }
+
   if(!loadWorkerUrl() || !isSessionValidLocally()){ errorEl.textContent = 'Log in with Discord in settings first.'; return; }
 
   postVoteBtn.disabled = true;
