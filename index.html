@@ -4182,6 +4182,7 @@ function createFloatingPanel({ title, bodyHtml, defaultRight = 24, defaultTop = 
   const head = panel.querySelector('.floating-panel-head');
   let dragging = false, startX = 0, startY = 0, startLeft = 0, startTop = 0;
   head.addEventListener('pointerdown', e => {
+    if(e.target.closest('.floating-panel-close')) return;
     dragging = true;
     const rect = panel.getBoundingClientRect();
     panel.style.left = rect.left + 'px';
@@ -4634,7 +4635,13 @@ async function consumeVoteResults(record){
   record.items.forEach((item, index) => {
     const voters = (record.results && record.results[String(index)]) || [];
     if(voters.length === 0) unclaimed.push(item);
-    else if(voters.length === 1) directAssign.push({ item, voter: voters[0] });
+    else if(voters.length === 1){
+      // A lone voter only ever gets one unit - being the only person interested
+      // isn't a claim on every copy. Any extra qty goes to Unclaimed, same as a
+      // zero-voter item, so it's visible and reimportable into a future vote.
+      directAssign.push({ item: { ...item, qty: 1 }, voter: voters[0] });
+      if(item.qty > 1) unclaimed.push({ ...item, qty: item.qty - 1 });
+    }
     else rollGroups.push({ item, voters });
   });
 
