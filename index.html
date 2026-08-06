@@ -4430,6 +4430,18 @@ function renderVoteStatus(){
   });
   actions.appendChild(abortBtn);
 
+  if(isSandboxMode()){
+    const editBtn = document.createElement('button');
+    editBtn.type = 'button';
+    editBtn.className = 'ghost-btn';
+    editBtn.textContent = 'Edit fake reactions';
+    editBtn.addEventListener('click', () => {
+      const record = loadSandboxRecord();
+      if(record) openFakeVoteWindow(record);
+    });
+    actions.appendChild(editBtn);
+  }
+
   const statusMsg = document.createElement('div');
   statusMsg.className = 'vote-status-msg';
   statusMsg.id = 'voteStatusMsg';
@@ -4446,6 +4458,16 @@ function setVoteStatusMsg(text, kind){
 async function checkVoteResults(){
   const pending = loadPendingVote();
   if(!pending) return;
+
+  if(isSandboxMode()){
+    const record = loadSandboxRecord();
+    if(!record) return;
+    const votersSoFar = Array.from(new Set(Object.values(record.results || {}).flat()));
+    setNamesFromVotes(votersSoFar);
+    setVoteStatusMsg(votersSoFar.length + (votersSoFar.length === 1 ? ' person has' : ' people have') + ' reacted so far (sandbox).');
+    return;
+  }
+
   setVoteStatusMsg('Checking…');
   try{
     const res = await workerFetch('/vote/' + pending.voteId + '/preview');
