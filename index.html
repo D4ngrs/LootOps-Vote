@@ -4602,7 +4602,7 @@ if(isSessionValidLocally()){
   renderVoteStatus();
   if(loadPendingVote()){
     checkVoteResults();
-  }else{
+  }else if(!isSandboxMode()){
     recoverActiveVoteIfNeeded();
   }
 }
