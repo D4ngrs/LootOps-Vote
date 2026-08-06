@@ -6,7 +6,7 @@ Date: 2026-08-06
 
 Let the tool's full UI and vote/roll lifecycle be exercised end-to-end without touching the real Discord server and without spending Cloudflare Worker requests. Today, testing the voting flow means posting a real message to Discord, waiting on real reactions (or asking someone to react), and burning Worker/Discord API calls in the process. Sandbox Mode replaces the parts of that flow that talk to Discord with local, in-browser equivalents, while leaving everything else in the tool - the Vote Status panel, the roll logic, results rendering, roll history, Share, Loot Sheet, the "Reimport unclaimed items" feature - completely unmodified.
 
-**Explicit non-goal:** Sandbox Mode does not change tool functionality in any way other than (a) never contacting the Worker/Discord, and (b) sourcing "who reacted to what" from a fake-reactions editor instead of real Discord reactions.
+**Explicit non-goal:** Sandbox Mode does not change tool functionality in any way other than (a) never making a Worker/Discord call anywhere in the vote/roll lifecycle itself, and (b) sourcing "who reacted to what" from a fake-reactions editor instead of real Discord reactions. Two Worker calls unrelated to the vote/roll lifecycle are a deliberate exception, decided during final review: `GET /config` (populates a Settings-modal status line - guarded behind Sandbox Mode, since it fires unconditionally on every page load for no benefit while sandbox testing) is skipped, but `GET /roles` (role-ping autocomplete) is left calling the Worker even in Sandbox Mode, since blocking it would make role selection untestable while sandboxed and it's a real, ongoing dependency of building a sandbox vote.
 
 ## 1. Toggle & visual indicator
 
