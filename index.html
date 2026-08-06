@@ -3661,11 +3661,6 @@ async function refreshHistoryWebhookConfigStatus(){
     : 'Not set - ask whoever manages the Worker to run `wrangler secret put HISTORY_WEBHOOK_URL`.';
   historyWebhookStatusEl.className = 'modal-status' + (historyWebhookConfigured ? ' ok' : '');
 }
-// Same guard as the vote-status bootstrap further down: only call the Worker
-// once there's an actual valid local session, so a logged-out visitor never
-// triggers a Worker request (and the 401-reload it would cause) at all.
-if(isSessionValidLocally()) refreshHistoryWebhookConfigStatus();
-
 // ---- Sandbox Mode ----
 // Gates a parallel localStorage namespace (see loadHistory/saveHistory and
 // loadPendingVote/savePendingVote/clearPendingVote below) and local stand-ins
@@ -3697,6 +3692,12 @@ async function setSandboxMode(on){
     if(on) localStorage.setItem(SANDBOX_MODE_KEY, '1');
     else localStorage.removeItem(SANDBOX_MODE_KEY);
   }catch(e){ /* storage unavailable, ignore */ }
+  // Close any open sandbox floating panels on any mode change (entering OR
+  // leaving) - a panel left over from before the switch (e.g. still writing
+  // into the sandbox record's storage key while the app now shows the live
+  // Vote Status panel) is never valid to keep open.
+  if(fakeVoteWindow) fakeVoteWindow.close();
+  if(resultsPreviewWindow) resultsPreviewWindow.close();
   updateSandboxIndicator();
   renderVoteStatus();
   renderHistory();
@@ -3708,6 +3709,13 @@ document.getElementById('sandboxModeBtn').addEventListener('click', () => {
 });
 
 updateSandboxIndicator();
+
+// Same guard as the vote-status bootstrap further down: only call the Worker
+// once there's an actual valid local session, so a logged-out visitor never
+// triggers a Worker request (and the 401-reload it would cause) at all. Also
+// skipped in Sandbox Mode - it only feeds a settings-modal status line that's
+// irrelevant while testing locally, and shouldn't hit the real Worker.
+if(isSessionValidLocally() && !isSandboxMode()) refreshHistoryWebhookConfigStatus();
 
 // ---- Discord Vote Worker connection ----
 const WORKER_URL_KEY = 'rollcall_vote_worker_url_v1';
@@ -4119,18 +4127,13 @@ function buildSandboxVoteMessageText(record){
 // responsible for rendering these as styled blocks.
 function buildSandboxResultsBlocks(record, names, buckets, leftover, spreadEven, capOne){
   const itemMetaByName = new Map(record.items.map(it => [it.name, it]));
-  function groupWon(bucket){
-    const counts = new Map();
-    bucket.forEach(n => counts.set(n, (counts.get(n) || 0) + 1));
-    return Array.from(counts.entries());
-  }
   const participantsText = names.join(', ') || '-';
   const lootPoolText = record.items.map(formatItemSummaryText).join('\n') || '-';
   const resultsText = names.length
     ? names.map((name, i) => {
         const got = buckets[i] || [];
         if(!got.length) return `**${name}:**\n_nothing_`;
-        const itemLines = groupWon(got).map(([itemName, qty]) => {
+        const itemLines = groupWonItems(got).map(({name: itemName, qty}) => {
           const meta = itemMetaByName.get(itemName) || {};
           return formatItemSummaryText({ name: itemName, info: meta.info, quality: meta.quality, scu: meta.scu, qty });
         }).join('\n');
@@ -4237,8 +4240,11 @@ function wireFakeVoteWindowInputs(win, record){
       current.results = current.results || {};
       current.results[String(i)] = pickFakeNames(count);
       saveSandboxRecord(current);
-      win.setBody(renderFakeVoteWindowBody(current));
-      wireFakeVoteWindowInputs(win, current);
+      // Deliberately no win.setBody(...)/re-wire here: the input's own value
+      // already reflects the clamped count above, so a full re-render would
+      // only destroy and recreate every input in the panel - which steals
+      // focus (breaking tab-to-next-input) and resets scroll position, for
+      // no visible benefit since nothing else in the body needs to change.
     });
   });
 }
@@ -4270,13 +4276,18 @@ function renderResultsBlockHtml(block, accentColor){
   );
 }
 
+let resultsPreviewWindow = null;
+
 function openResultsPreviewWindow(record, names, buckets, leftover, spreadEven, capOne){
+  if(resultsPreviewWindow) resultsPreviewWindow.close();
   const { main, results } = buildSandboxResultsBlocks(record, names, buckets, leftover, spreadEven, capOne);
   const bodyHtml = renderResultsBlockHtml(main, 'var(--gold)') + renderResultsBlockHtml(results, 'var(--violet)');
-  createFloatingPanel({
+  resultsPreviewWindow = createFloatingPanel({
     title: 'Sandbox: would post as results',
     bodyHtml,
   });
+  const originalClose = resultsPreviewWindow.close;
+  resultsPreviewWindow.close = () => { originalClose(); resultsPreviewWindow = null; };
 }
 
 // ---- Post to Discord for Voting ----
@@ -4329,6 +4340,7 @@ postVoteBtn.addEventListener('click', async () => {
   if(itemsArr.length === 0){ errorEl.textContent = 'Add at least one item before posting.'; return; }
 
   if(isSandboxMode()){
+    errorEl.textContent = '';
     const record = {
       id: 'sandbox-' + Date.now(),
       items: buildVoteItemsPayload(),
