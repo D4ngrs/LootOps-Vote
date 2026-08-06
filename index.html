@@ -4254,6 +4254,31 @@ function openFakeVoteWindow(record){
   fakeVoteWindow.close = () => { originalClose(); fakeVoteWindow = null; };
 }
 
+// ---- Sandbox Mode: Window 2 (results preview) ----
+function renderResultsBlockHtml(block, accentColor){
+  const fieldsHtml = block.fields.map(([label, value]) =>
+    '<div style="margin-bottom:10px;">' +
+      '<div class="modal-label" style="margin-bottom:4px;">' + escapeHtml(label) + '</div>' +
+      '<div style="white-space:pre-wrap;">' + mdPreviewToHtml(value) + '</div>' +
+    '</div>'
+  ).join('');
+  return (
+    '<div style="border-left:3px solid ' + accentColor + '; padding-left:12px; margin-bottom:16px;">' +
+      '<div style="font-family:\'Space Grotesk\', sans-serif; font-weight:700; margin-bottom:10px;">' + escapeHtml(block.title) + '</div>' +
+      fieldsHtml +
+    '</div>'
+  );
+}
+
+function openResultsPreviewWindow(record, names, buckets, leftover, spreadEven, capOne){
+  const { main, results } = buildSandboxResultsBlocks(record, names, buckets, leftover, spreadEven, capOne);
+  const bodyHtml = renderResultsBlockHtml(main, 'var(--gold)') + renderResultsBlockHtml(results, 'var(--violet)');
+  createFloatingPanel({
+    title: 'Sandbox: would post as results',
+    bodyHtml,
+  });
+}
+
 // ---- Post to Discord for Voting ----
 const PENDING_VOTE_KEY = 'rollcall_vote_pending_v1';
 const SANDBOX_PENDING_VOTE_KEY = 'rollcall_vote_test_pending_v1';
@@ -4495,6 +4520,17 @@ async function checkVoteResults(){
 }
 
 async function finalizeVoteNow(voteId){
+  if(isSandboxMode()){
+    const record = loadSandboxRecord();
+    if(!record){ setVoteStatusMsg('No sandbox vote found.', 'err'); return; }
+    record.status = 'ready';
+    record.finalizedAt = Date.now();
+    saveSandboxRecord(record);
+    if(fakeVoteWindow) fakeVoteWindow.close();
+    await consumeVoteResults(record);
+    return;
+  }
+
   setVoteStatusMsg('Rolling…');
   try{
     const res = await workerFetch('/vote/' + voteId + '/finalize', { method: 'POST' });
@@ -4515,6 +4551,15 @@ async function finalizeVoteNow(voteId){
 }
 
 async function abortVoteNow(voteId){
+  if(isSandboxMode()){
+    const record = loadSandboxRecord();
+    if(record){ record.status = 'aborted'; saveSandboxRecord(record); }
+    if(fakeVoteWindow) fakeVoteWindow.close();
+    clearPendingVote();
+    renderVoteStatus();
+    return;
+  }
+
   setVoteStatusMsg('Cancelling…');
   try{
     const res = await workerFetch('/vote/' + voteId + '/abort', { method: 'POST' });
@@ -4641,6 +4686,18 @@ async function consumeVoteResults(record){
   // copy. Idempotent server-side, so a failed/retried call here can't double-post.
   // The webhook URL itself lives only in the Worker's HISTORY_WEBHOOK_URL secret —
   // this just tells it whether to use it for this particular roll.
+  //
+  // In Sandbox Mode, nothing is actually sent anywhere - Window 2 (opened by
+  // openResultsPreviewWindow) already shows exactly what would have been
+  // posted, so there's nothing left to announce.
+  if(isSandboxMode()){
+    openResultsPreviewWindow(record, allNames, buckets, unclaimed.map(it => it.name), evenSpread.checked, oneEach.checked);
+    discordStatusEl.textContent = 'Sandbox roll complete - nothing was posted to Discord.';
+    discordStatusEl.className = 'ok';
+    clearSandboxRecord();
+    return;
+  }
+
   try{
     const res = await workerFetch('/vote/' + record.id + '/announce', {
       method: 'POST',
